@@ -35,7 +35,6 @@ class GhostCam
 		keys["netname"] = string(plr.pev.netname);
 		keys["rendermode"] = "1";
 		keys["renderamt"] = "" + renderAmt;
-		keys["renderfx"] = "19";
 		keys["spawnflags"] = "1";
 		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("cycler", keys, true);		
 		ghostCam.pev.solid = SOLID_NOT;
@@ -93,7 +92,6 @@ class GhostCam
 		keys["targetname"] = string(cam.pev.targetname);
 		keys["rendermode"] = "1";
 		keys["renderamt"] = "" + renderAmt;
-		keys["renderfx"] = "19";
 		keys["spawnflags"] = "1";
 		CBaseEntity@ camHat = g_EntityFuncs.CreateEntity("env_sprite", keys, true);	
 
@@ -122,6 +120,9 @@ class GhostCam
 		{
 			PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
 			CBasePlayer@ statePlr = cast<CBasePlayer@>(state.plr.GetEntity());
+			
+			if (statePlr is null)
+				continue;
 			
 			if (statePlr.entindex() == plr.entindex())
 				continue;
@@ -216,7 +217,7 @@ class GhostCam
 			{
 				PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
 				CBaseEntity@ plr = state.plr;
-				if (state.shouldSeeGhosts()) {
+				if (plr !is null && state.shouldSeeGhosts()) {
 					int scale = cvar_use_player_models.GetInt() != 0 ? 10 : 4;
 					te_smoke(cam.pev.origin - Vector(0,0,24), "sprites/steam1.spr", scale, 40, MSG_ONE_UNRELIABLE, plr.edict());
 					g_SoundSystem.PlaySound( cam.edict(), CHAN_STATIC, "player/pl_organic2.wav", 0.8f, 1.0f, 0, 50, plr.entindex());
@@ -259,7 +260,7 @@ class GhostCam
 		
 		cam.pev.netname = "Ghost:  " + plr.pev.netname +
 					    "\nCorpse: " + (plr.GetObserver().HasCorpse() ? "Yes" : "No") +
-					    "\nArmor:  " + plr.pev.armorvalue +
+					    "\nArmor:  " + int(plr.pev.armorvalue) +
 					    "\nScore:    " + int(plr.pev.frags);
 		
 		if (cvar_use_player_models.GetInt() != 0) {

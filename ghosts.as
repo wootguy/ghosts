@@ -135,7 +135,7 @@ void ghostLoop() {
 		// show spectator info
 		CBasePlayer@ plr = cast<CBasePlayer@>(state.plr.GetEntity());
 		CBaseEntity@ cam = state.cam.h_cam;
-		if (plr !is null ) {			
+		if (plr !is null) {
 			Math.MakeVectors( plr.pev.v_angle );
 			Vector lookDir = g_Engine.v_forward;
 			
@@ -167,8 +167,8 @@ void ghostLoop() {
 						params.b1 = 94;
 						
 						string info = "Player:  " + phit.pev.netname +
-									   "\nHealth:  " + phit.pev.health +
-									   "\nArmor:  " + plr.pev.armorvalue +
+									   "\nHealth:  " + int(phit.pev.health) +
+									   "\nArmor:  " + int(plr.pev.armorvalue) +
 									   "\nScore:    " + int(phit.pev.frags);
 						
 						g_PlayerFuncs.HudMessage(plr, params, info);
@@ -190,6 +190,7 @@ void ghostLoop() {
 		}
 	}
 	
+	// make ghosts nonsolid again
 	for (uint i = 0; i < stateKeys.length(); i++)
 	{
 		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
@@ -214,7 +215,8 @@ HookReturnCode PlayerLeftObserver( CBasePlayer@ plr ) {
 }
 
 HookReturnCode ClientJoin( CBasePlayer@ plr ) {
-	getPlayerState(plr);	
+	getPlayerState(plr);
+	update_ghost_visibility();
 	return HOOK_CONTINUE;
 }
 
@@ -232,7 +234,10 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	
 	if (args.ArgC() >= 2)
 	{
-		if (isdigit(args[1])) {
+		if (args[1] == "version") {
+			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP\n");
+		}
+		else if (isdigit(args[1])) {
 			int newMode = atoi(args[1]);
 			if (newMode < 0 || newMode >= MODE_TOTAL) {
 				newMode = cvar_default_mode.GetInt();
