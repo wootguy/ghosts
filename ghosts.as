@@ -48,7 +48,7 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::ClientPutInServer, @ClientJoin );
 	
 	@cvar_use_player_models = CCVar("player_models", 1, "show player models instead of cameras", ConCommandFlag::AdminOnly);
-	@cvar_default_mode = CCVar("default_mode", MODE_SHOW, "ghost visibility mode", ConCommandFlag::AdminOnly);
+	@cvar_default_mode = CCVar("default_mode", MODE_HIDE_IF_ALIVE, "ghost visibility mode", ConCommandFlag::AdminOnly);
 	
 	populatePlayerStates();
 	
