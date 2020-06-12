@@ -108,6 +108,39 @@ float AngleDifference( float angle2, float angle1 ) {
     return diff < -180 ? diff + 360 : diff;
 }
 
+Vector VecBModelOrigin( entvars_t@ pevBModel )
+{
+	return pevBModel.absmin + ( pevBModel.size * 0.5 );
+}
+
+Vector UTIL_ClampVectorToBox( Vector input, Vector clampSize )
+{
+	Vector sourceVector = input;
+
+	if ( sourceVector.x > clampSize.x )
+		sourceVector.x -= clampSize.x;
+	else if ( sourceVector.x < -clampSize.x )
+		sourceVector.x += clampSize.x;
+	else
+		sourceVector.x = 0;
+
+	if ( sourceVector.y > clampSize.y )
+		sourceVector.y -= clampSize.y;
+	else if ( sourceVector.y < -clampSize.y )
+		sourceVector.y += clampSize.y;
+	else
+		sourceVector.y = 0;
+	
+	if ( sourceVector.z > clampSize.z )
+		sourceVector.z -= clampSize.z;
+	else if ( sourceVector.z < -clampSize.z )
+		sourceVector.z += clampSize.z;
+	else
+		sourceVector.z = 0;
+
+	return sourceVector.Normalize();
+}
+
 void te_smoke(Vector pos, string sprite="sprites/steam1.spr", 
 	int scale=10, int frameRate=15,
 	NetworkMessageDest msgType=MSG_BROADCAST, edict_t@ dest=null)

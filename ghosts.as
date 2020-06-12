@@ -64,6 +64,7 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::PlayerEnteredObserver, @PlayerEnteredObserver );
 	g_Hooks.RegisterHook( Hooks::Player::PlayerLeftObserver, @PlayerLeftObserver );
 	g_Hooks.RegisterHook( Hooks::Player::ClientPutInServer, @ClientJoin );
+	g_Hooks.RegisterHook( Hooks::Player::PlayerUse, @PlayerUse );
 	
 	@cvar_use_player_models = CCVar("player_models", 1, "show player models instead of cameras", ConCommandFlag::AdminOnly);
 	@cvar_default_mode = CCVar("default_mode", MODE_HIDE_IF_BLOCKING, "ghost visibility mode", ConCommandFlag::AdminOnly);
@@ -527,6 +528,65 @@ HookReturnCode ClientSay( SayParameters@ pParams ) {
 		pParams.ShouldHide = true;
 		return HOOK_HANDLED;
 	}
+	return HOOK_CONTINUE;
+}
+
+// this exists to prevent players +use'ing ghosts (which breaks animations)
+// a custom entity could be used instead but that causes really weird bugs and makes testing harder
+HookReturnCode PlayerUse( CBasePlayer@ pPlayer, uint& out uiFlags )
+{
+	if ( ( pPlayer.m_afButtonPressed & IN_USE ) == 0 ) {
+		return HOOK_CONTINUE;
+	}
+	
+	if (pPlayer.m_hTank.IsValid() || ( pPlayer.m_afPhysicsFlags & PFLAG_ONTRAIN ) != 0) {
+		return HOOK_CONTINUE;
+	}
+	
+	//
+	// Half-Life +USE code
+	//
+	
+	CBaseEntity@ pObject = null;
+	CBaseEntity@ pClosest = null;
+	Vector vecLOS;
+	float flMaxDot = VIEW_FIELD_NARROW;
+	float flDot;
+
+	Math.MakeVectors(pPlayer.pev.v_angle);
+	
+	const int PLAYER_SEARCH_RADIUS = 96;
+	while ((@pObject = g_EntityFuncs.FindEntityInSphere( pObject, pPlayer.pev.origin, PLAYER_SEARCH_RADIUS, "*", "classname" )) !is null)
+	{
+		if ((pObject.ObjectCaps() & (FCAP_IMPULSE_USE | FCAP_CONTINUOUS_USE | FCAP_ONOFF_USE)) != 0)
+		{
+			// !!!PERFORMANCE- should this check be done on a per case basis AFTER we've determined that
+			// this object is actually usable? This dot is being done for every object within PLAYER_SEARCH_RADIUS
+			// when player hits the use key. How many objects can be in that area, anyway? (sjb)
+			vecLOS = (VecBModelOrigin( pObject.pev ) - (pPlayer.pev.origin + pPlayer.pev.view_ofs));
+			
+			// This essentially moves the origin of the target to the corner nearest the player to test to see 
+			// if it's "hull" is in the view cone
+			vecLOS = UTIL_ClampVectorToBox( vecLOS, pObject.pev.size * 0.5 );
+			
+			flDot = DotProduct (vecLOS, g_Engine.v_forward);
+			if (flDot > flMaxDot )
+			{// only if the item is in front of the user
+				@pClosest = pObject;
+				flMaxDot = flDot;
+			}
+		}
+	}
+	@pObject = @pClosest;
+
+	// Found an object
+	if (pObject !is null and string(pObject.pev.targetname).Find(g_ent_prefix) == 0)
+	{
+		// prevent using cyclers since that messes up their animations
+		uiFlags |= PlrHook_SkipUse;
+		g_SoundSystem.PlaySound( pPlayer.edict(), CHAN_ITEM, "common/wpn_denyselect.wav", 0.4f, 1.0f, pPlayer.entindex(), 100);
+	}
+	
 	return HOOK_CONTINUE;
 }
 
