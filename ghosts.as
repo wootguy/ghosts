@@ -72,6 +72,14 @@ void MapInit()
 {
 	ghostId = 0;
 	g_Game.PrecacheModel(g_camera_model);
+	
+	// reset camera state
+	array<string>@ stateKeys = g_player_states.getKeys();
+	for (uint i = 0; i < stateKeys.length(); i++)
+	{
+		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+		state.cam = GhostCam();
+	}
 }
 
 void MapActivate()
@@ -328,7 +336,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	if (args.ArgC() >= 2)
 	{
 		if (args[1] == "version") {
-			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP\n");
+			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP2\n");
 		}
 		else if (args[1] == "renderamt" && args.ArgC() >= 3 && isAdmin) {
 			g_renderamt = atof(args[2]);

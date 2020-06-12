@@ -1,4 +1,7 @@
 float g_renderamt = 96;
+float g_min_zoom = 0;
+float g_max_zoom = 1024;
+float g_default_zoom = 96;
 
 class GhostCam
 {
@@ -13,6 +16,13 @@ class GhostCam
 	float nextThirdPersonToggle = 0;
 	Vector lastOrigin;
 	Vector lastThirdPersonOrigin;
+	Vector lastPlayerOrigin; // for third person zooming
+	Vector lastPlayerAngles; // for rotating third person cam
+	Vector thirdPersonRot;
+	float thirdPersonZoom = g_default_zoom;
+	bool showCameraHelp = true;
+	bool showCameraCtrlHelp = true;
+	bool showThirdPersonHelp = true;
 	
 	GhostCam() {}
 	
@@ -59,21 +69,39 @@ class GhostCam
 
 		createCameraHat();
 		
+		if (showThirdPersonHelp) {
+			g_PlayerFuncs.PrintKeyBindingString(plr, "+alt1 to toggle third-person");
+			showThirdPersonHelp = false;
+		}
+		
 		initialized = true;
 		isThirdPerson = false;
+		thirdPersonRot = Vector(0,0,0);
+		thirdPersonZoom = g_default_zoom;
 	}
 	
 	void toggleThirdperson() {
 		if (!isValid()) {
 			return;
 		}
-		CBaseEntity@ plr = h_plr;
+		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 		CBaseEntity@ hideGhostCam = h_render_off;
 		
 		isThirdPerson = !isThirdPerson;
 		if (isThirdPerson) {
 			g_EngineFuncs.SetView( h_plr.GetEntity().edict(), h_render_off.GetEntity().edict() );
 			hideGhostCam.Use(plr, plr, USE_OFF);
+			
+			if (showCameraHelp) {
+				g_PlayerFuncs.PrintKeyBindingString(plr, "Hold +DUCK to adjust camera");
+				showCameraHelp = false;
+			}
+			
+			// reset camera smoothing
+			hideGhostCam.pev.origin = plr.pev.origin;
+			hideGhostCam.pev.angles = plr.pev.v_angle;
+			hideGhostCam.pev.angles.x *= -1;
+			lastThirdPersonOrigin = plr.pev.origin;
 		} else {
 			g_EngineFuncs.SetView( h_plr.GetEntity().edict(), h_plr.GetEntity().edict() );
 			hideGhostCam.Use(plr, plr, USE_ON);
@@ -326,34 +354,91 @@ class GhostCam
 			// it's needed to re-create the hat after doing "hat off" + "hat afro"
 		}
 		
-		cam.pev.colormap = plr.pev.colormap;
+		Math.MakeVectors( plr.pev.v_angle );
+		Vector playerForward = g_Engine.v_forward;
 		
-		{
-			Vector delta = plr.pev.origin - lastOrigin; 
-			cam.pev.velocity = delta*0.05f*100.0f;
-			
-			lastOrigin = cam.pev.origin;
+		if (isThirdPerson && (plr.pev.button & IN_RELOAD) != 0) {
+			thirdPersonRot = Vector(0,0,0);
+			thirdPersonZoom = g_default_zoom;
 		}
 		
-		Math.MakeVectors( plr.pev.v_angle );
+		if (isThirdPerson && (plr.pev.button & IN_DUCK) != 0) {
+			if (showCameraCtrlHelp) {
+				g_PlayerFuncs.PrintKeyBindingString(plr, "+FORWARD and +BACK to zoom\n+RELOAD to reset");
+				showCameraCtrlHelp = false;
+			}
+			thirdPersonRot = thirdPersonRot + (plr.pev.v_angle - lastPlayerAngles);
+			if (thirdPersonRot.y > 180) {
+				thirdPersonRot.y -= 360;
+			} else if (thirdPersonRot.y < -180) {
+				thirdPersonRot.y += 360;
+			}
+			if ((plr.pev.button & IN_FORWARD) != 0) {
+				thirdPersonZoom -= 16.0f;
+			}
+			if ((plr.pev.button & IN_BACK) != 0) {
+				thirdPersonZoom += 16.0f;
+			}
+			if (thirdPersonZoom < g_min_zoom)
+				thirdPersonZoom = g_min_zoom;
+			else if (thirdPersonZoom > g_max_zoom) {
+				thirdPersonZoom = g_max_zoom;
+			}
+			
+			plr.pev.angles = lastPlayerAngles;
+			plr.pev.v_angle = lastPlayerAngles;
+			plr.pev.fixangle = FAM_FORCEVIEWANGLES;
+			plr.pev.origin = lastPlayerOrigin;
+		}
+		lastPlayerAngles = plr.pev.v_angle;
+		lastPlayerOrigin = plr.pev.origin;
+		
+		cam.pev.colormap = plr.pev.colormap;
+		
+		Vector modelTargetPos = plr.pev.origin;
+		if (g_use_player_models) {
+			// center player model head at view origin (wont work for tall/short models)
+			modelTargetPos = modelTargetPos + g_Engine.v_forward*-28 + g_Engine.v_up*-9;
+		}
+		
+		Vector delta = modelTargetPos - lastOrigin; 
+		cam.pev.velocity = delta*0.05f*100.0f;
+		
+		lastOrigin = cam.pev.origin;
 		
 		if (thirdPersonTarget !is null) {
 			if (isThirdPerson) {
-				Vector idealPos = plr.pev.origin - g_Engine.v_forward*96 + g_Engine.v_up*16;
+				
+				Vector plrAngles = plr.pev.v_angle;
+				
+				// invert camera up/down rotation when camera is in front of the player (hard to control)
+				/*
+				if (thirdPersonRot.y > 90 || thirdPersonRot.y < -90) 
+					plrAngles.x *= -1;
+				*/
+						
+				Math.MakeVectors(plrAngles + thirdPersonRot);
+				
+				Vector offset = (g_Engine.v_forward*96 + g_Engine.v_up*-24).Normalize() * thirdPersonZoom;
+				
+				Vector idealPos = modelTargetPos - offset;
 				
 				TraceResult tr;
-				g_Utility.TraceLine( plr.pev.origin, idealPos, ignore_monsters, null, tr );
+				g_Utility.TraceLine( modelTargetPos, idealPos, ignore_monsters, null, tr );
 				
 				if (tr.fInOpen != 0) {
 					g_EngineFuncs.SetView( plr.edict(), thirdPersonTarget.edict() );
 					//thirdPersonTarget.pev.origin = tr.vecEndPos;
 					//thirdPersonTarget.pev.angles = plr.pev.v_angle;
 					
-					float rot_x_diff = AngleDifference(plr.pev.v_angle.x, thirdPersonTarget.pev.angles.x);
-					float rot_y_diff = AngleDifference(plr.pev.v_angle.y, thirdPersonTarget.pev.angles.y);
 					
-					Vector delta = tr.vecEndPos - lastThirdPersonOrigin; 
-					thirdPersonTarget.pev.velocity = delta*0.05f*100.0f;
+					Vector targetAngles = plrAngles + thirdPersonRot;
+					
+					float rot_x_diff = AngleDifference(targetAngles.x, thirdPersonTarget.pev.angles.x);
+					float rot_y_diff = AngleDifference(targetAngles.y, thirdPersonTarget.pev.angles.y);
+					
+					Vector delta2 = tr.vecEndPos - lastThirdPersonOrigin; 
+					thirdPersonTarget.pev.velocity = delta2*0.05f*100.0f;
 					thirdPersonTarget.pev.avelocity = Vector(rot_x_diff*10, rot_y_diff*10, 0);
 				} else {
 					g_EngineFuncs.SetView( plr.edict(), plr.edict() );
@@ -370,19 +455,16 @@ class GhostCam
 					    "\nArmor:  " + int(plr.pev.armorvalue) +
 					    "\nScore:    " + int(plr.pev.frags);
 		
+		// reverse angle looks better for the swimming animation (leaning into turns)
+		float torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
+		torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
+		float ideal_z_rot = torsoAngle*4;
+		
 		if (isPlayerModel) {
 			if (cam.pev.sequence != 10 || cam.pev.framerate != 0.25f) {
 				cam.pev.sequence = 10;
 				cam.pev.framerate = 0.25f;
 			}
-		
-			
-			
-			// rotate lower body slower than upper body
-			//float torsoAngle = AngleDifference(angle_y, cam.pev.angles.y) * (30.0f / 90.0f);
-			// reverse angle looks better for the swimming animation (leaning into turns)
-			float torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
-			torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
 		
 			for (int k = 0; k < 4; k++) {
 				cam.SetBoneController(k, torsoAngle);
@@ -391,7 +473,8 @@ class GhostCam
 		
 		float angle_diff_x = AngleDifference(-plr.pev.v_angle.x, cam.pev.angles.x);
 		float angle_diff_y = AngleDifference(plr.pev.v_angle.y, cam.pev.angles.y);
-		cam.pev.avelocity = Vector(angle_diff_x*10, angle_diff_y*10, 0);
+		float angle_diff_z = AngleDifference(ideal_z_rot, cam.pev.angles.z);
+		cam.pev.avelocity = Vector(angle_diff_x*10, angle_diff_y*10, angle_diff_z*10);
 		
 		if ((plr.pev.button & IN_USE) != 0) {
 			sprayLogo();
