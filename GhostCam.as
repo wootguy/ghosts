@@ -41,14 +41,13 @@ class GhostCam
 		keys["origin"] = plr.pev.origin.ToString();
 		keys["model"] = isPlayerModel ? getPlayerModel() : g_camera_model;
 		keys["targetname"] = g_ent_prefix + ghostId;
-		keys["netname"] = string(plr.pev.netname);
+		keys["noise"] = getPlayerUniqueId(plr); // used by the emotes plugin to find this ent
 		keys["rendermode"] = "1";
 		keys["renderamt"] = "" + g_renderamt;
 		keys["spawnflags"] = "1";
-		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("cycler", keys, true);		
+		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("cycler", keys, true);
 		ghostCam.pev.solid = SOLID_NOT;
 		ghostCam.pev.movetype = MOVETYPE_NOCLIP;
-		ghostCam.pev.sequence = 10;
 		ghostCam.pev.takedamage = 0;
 		ghostCam.pev.angles = plr.pev.v_angle;
 		h_cam = ghostCam;
@@ -393,8 +392,9 @@ class GhostCam
 		lastPlayerAngles = plr.pev.v_angle;
 		lastPlayerOrigin = plr.pev.origin;
 		
+		bool isPlayingEmote = string(cam.pev.noise1) == "emote";
 		Vector modelTargetPos = plr.pev.origin;
-		if (g_use_player_models) {
+		if (isPlayerModel && !isPlayingEmote) {
 			// center player model head at view origin (wont work for tall/short models)
 			modelTargetPos = modelTargetPos + g_Engine.v_forward*-28 + g_Engine.v_up*-9;
 		}
@@ -459,8 +459,14 @@ class GhostCam
 		
 		if (isPlayerModel) {
 			if (cam.pev.sequence != 10 || cam.pev.framerate != 0.25f) {
-				cam.pev.sequence = 10;
-				cam.pev.framerate = 0.25f;
+				if (!isPlayingEmote) {
+					// reset to swim animation if no emote is playing
+					cam.m_Activity = ACT_RELOAD;
+					cam.pev.sequence = 10;
+					cam.pev.frame = 0;
+					cam.ResetSequenceInfo();
+					cam.pev.framerate = 0.25f;
+				}
 			}
 		
 			for (int k = 0; k < 4; k++) {
