@@ -48,7 +48,9 @@ class GhostCam
 		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("cycler", keys, true);		
 		ghostCam.pev.solid = SOLID_NOT;
 		ghostCam.pev.movetype = MOVETYPE_NOCLIP;
+		ghostCam.pev.sequence = 10;
 		ghostCam.pev.takedamage = 0;
+		ghostCam.pev.angles = plr.pev.v_angle;
 		h_cam = ghostCam;
 
 		dictionary rkeys;
@@ -70,7 +72,7 @@ class GhostCam
 		createCameraHat();
 		
 		if (showThirdPersonHelp) {
-			g_PlayerFuncs.PrintKeyBindingString(plr, "+alt1 to toggle third-person");
+			g_PlayerFuncs.PrintKeyBindingString(plr, "+alt1 to toggle third-person\n+USE to spray");
 			showThirdPersonHelp = false;
 		}
 		
@@ -78,6 +80,7 @@ class GhostCam
 		isThirdPerson = false;
 		thirdPersonRot = Vector(0,0,0);
 		thirdPersonZoom = g_default_zoom;
+		lastOrigin = plr.pev.origin;
 	}
 	
 	void toggleThirdperson() {
@@ -202,12 +205,9 @@ class GhostCam
 			PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
 			CBasePlayer@ statePlr = cast<CBasePlayer@>(state.h_plr.GetEntity());
 			
-			if (statePlr is null)
+			if (statePlr is null or statePlr.entindex() == plr.entindex())
 				continue;
-			
-			if (statePlr.entindex() == plr.entindex())
-				continue;
-			
+
 			if (state.shouldSeeGhosts()) {
 				hideGhostCam.Use(statePlr, statePlr, USE_OFF);
 			} else {
@@ -357,11 +357,11 @@ class GhostCam
 		Math.MakeVectors( plr.pev.v_angle );
 		Vector playerForward = g_Engine.v_forward;
 		
+		// adjust third-person camera
 		if (isThirdPerson && (plr.pev.button & IN_RELOAD) != 0) {
 			thirdPersonRot = Vector(0,0,0);
 			thirdPersonZoom = g_default_zoom;
 		}
-		
 		if (isThirdPerson && (plr.pev.button & IN_DUCK) != 0) {
 			if (showCameraCtrlHelp) {
 				g_PlayerFuncs.PrintKeyBindingString(plr, "+FORWARD and +BACK to zoom\n+RELOAD to reset");
@@ -393,8 +393,6 @@ class GhostCam
 		lastPlayerAngles = plr.pev.v_angle;
 		lastPlayerOrigin = plr.pev.origin;
 		
-		cam.pev.colormap = plr.pev.colormap;
-		
 		Vector modelTargetPos = plr.pev.origin;
 		if (g_use_player_models) {
 			// center player model head at view origin (wont work for tall/short models)
@@ -406,6 +404,7 @@ class GhostCam
 		
 		lastOrigin = cam.pev.origin;
 		
+		// update third-person perspective origin/angles
 		if (thirdPersonTarget !is null) {
 			if (isThirdPerson) {
 				
@@ -428,9 +427,6 @@ class GhostCam
 				
 				if (tr.fInOpen != 0) {
 					g_EngineFuncs.SetView( plr.edict(), thirdPersonTarget.edict() );
-					//thirdPersonTarget.pev.origin = tr.vecEndPos;
-					//thirdPersonTarget.pev.angles = plr.pev.v_angle;
-					
 					
 					Vector targetAngles = plrAngles + thirdPersonRot;
 					
@@ -450,6 +446,7 @@ class GhostCam
 			lastThirdPersonOrigin = thirdPersonTarget.pev.origin;
 		}
 		
+		cam.pev.colormap = plr.pev.colormap;
 		cam.pev.netname = "Ghost:  " + plr.pev.netname +
 					    "\nCorpse: " + (plr.GetObserver().HasCorpse() ? "Yes" : "No") +
 					    "\nArmor:  " + int(plr.pev.armorvalue) +
