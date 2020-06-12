@@ -21,6 +21,7 @@ bool g_force_visible = false;
 enum ghost_modes {
 	MODE_HIDE = 0,
 	MODE_SHOW,
+	MODE_HIDE_IF_BLOCKING, // for when ghosts have chasecam enabled and are in front of the player's face
 	MODE_HIDE_IF_ALIVE,
 	MODE_TOTAL
 };
@@ -36,6 +37,9 @@ class PlayerState
 		if (visbilityMode == MODE_SHOW || g_force_visible)
 			return true;
 			
+		if (visbilityMode == MODE_HIDE_IF_BLOCKING)
+			return true; // individual ghosts will be hidden later
+			
 		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 		return visbilityMode == MODE_HIDE_IF_ALIVE && plr !is null && plr.GetObserver().IsObserver();
 	}
@@ -43,6 +47,11 @@ class PlayerState
 	void debug(CBasePlayer@ plr) {		
 		debug_plr(plr, h_plr);
 		conPrintln(plr, "    mode: " + visbilityMode + ", info: " + viewingMonsterInfo);
+	}
+	
+	bool isValid() {
+		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+		return plr !is null && plr.IsConnected();
 	}
 }
 
@@ -57,7 +66,7 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::ClientPutInServer, @ClientJoin );
 	
 	@cvar_use_player_models = CCVar("player_models", 1, "show player models instead of cameras", ConCommandFlag::AdminOnly);
-	@cvar_default_mode = CCVar("default_mode", MODE_SHOW, "ghost visibility mode", ConCommandFlag::AdminOnly);
+	@cvar_default_mode = CCVar("default_mode", MODE_HIDE_IF_BLOCKING, "ghost visibility mode", ConCommandFlag::AdminOnly);
 	
 	delete_ghosts();
 	
@@ -150,16 +159,33 @@ void ghostLoop() {
 	for (uint i = 0; i < stateKeys.length(); i++)
 	{
 		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+
 		state.cam.think();
 		
 		if (!state.shouldSeeGhosts()) {
 			continue;
 		}
 		
-		// show spectator info
+		// hide ghost if blocking view
+		bool isGhostVisible = true;
 		CBasePlayer@ plr = cast<CBasePlayer@>(state.h_plr.GetEntity());
+		if (plr !is null && plr.IsConnected() && plr.IsAlive() && state.visbilityMode == MODE_HIDE_IF_BLOCKING && !g_force_visible) {
+			for (uint k = 0; k < stateKeys.length(); k++) {
+				PlayerState@ gstate = cast<PlayerState@>( g_player_states[stateKeys[k]] );
+				if (gstate.cam.isValid()) {
+					Math.MakeVectors(plr.pev.v_angle);
+					Vector delta = gstate.cam.h_cam.GetEntity().pev.origin - plr.pev.origin;
+					bool isBlockingView = DotProduct(g_Engine.v_forward, delta.Normalize()) > 0.3f && delta.Length() < 200;
+					CBaseEntity@ renderOff = gstate.cam.h_render_off;
+					renderOff.Use(plr, plr, isBlockingView ? USE_ON : USE_OFF);
+					isGhostVisible = !isBlockingView;
+				}
+			}
+		}
+		
+		// show spectator info
 		CBaseEntity@ cam = state.cam.h_cam;
-		if (plr !is null) {
+		if (plr !is null && isGhostVisible) {
 			Math.MakeVectors( plr.pev.v_angle );
 			Vector lookDir = g_Engine.v_forward;
 			
@@ -437,6 +463,8 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			
 			if (newMode == MODE_HIDE) {
 				g_PlayerFuncs.SayText(plr, "Hiding ghosts\n");
+			} else if (newMode == MODE_HIDE_IF_BLOCKING) {
+				g_PlayerFuncs.SayText(plr, "Showing ghosts that don't block your view\n");
 			} else if (newMode == MODE_HIDE_IF_ALIVE) {
 				g_PlayerFuncs.SayText(plr, "Showing ghosts only while dead\n");
 			} else if (newMode == MODE_SHOW) {
@@ -476,12 +504,14 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		if (inConsole) {
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 0" to hide ghosts.\n');
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 1" to show ghosts.\n');
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 2" to show ghosts only while dead.\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 2" to show ghosts that aren\'t blocking your view.\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 3" to show ghosts only while dead.\n');
 			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Your current mode is ' + state.visbilityMode + '. ' + precachedString + '\n');
 		} else {
 			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 0" to hide ghosts.\n');
 			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 1" to show ghosts.\n');
-			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 2" to show ghosts only while dead.\n');
+			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 2" to show ghosts that aren\'t blocking your view.\n');
+			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 3" to show ghosts only while dead.\n');
 			g_PlayerFuncs.SayText(plr, 'Your current mode is ' + state.visbilityMode + '. ' + precachedString + '\n');
 		}
 		
