@@ -1,3 +1,4 @@
+float g_renderamt = 96;
 
 class GhostCam
 {
@@ -6,8 +7,8 @@ class GhostCam
 	EHandle h_render_off;
 	EHandle h_hat;
 	EHandle h_watch_hat; // hat entity created by the hats plugin
-	float renderAmt = 64;
 	bool initialized = false;
+	bool isPlayerModel;
 	Vector lastOrigin;
 	
 	GhostCam() {}
@@ -18,23 +19,18 @@ class GhostCam
 	
 	void init(CBasePlayer@ plr) {
 		h_plr = plr;
-	
-		KeyValueBuffer@ p_PlayerInfo = g_EngineFuncs.GetInfoKeyBuffer( plr.edict() );
-		string playerModel = p_PlayerInfo.GetValue( "model" ).ToLowercase();
 		
-		if (g_player_model_precache.exists(playerModel)) {
-			playerModel = "models/player/" + playerModel + "/" + playerModel + ".mdl";
-		} else {
-			playerModel = "models/player.mdl";
-		}
+		isPlayerModel = g_use_player_models;
+		
+		ghostId++;
 		
 		dictionary keys;
 		keys["origin"] = plr.pev.origin.ToString();
-		keys["model"] = cvar_use_player_models.GetInt() != 0 ? playerModel : g_camera_model;
-		keys["targetname"] = g_ent_prefix + ghostId++;
+		keys["model"] = isPlayerModel ? getPlayerModel() : g_camera_model;
+		keys["targetname"] = g_ent_prefix + ghostId;
 		keys["netname"] = string(plr.pev.netname);
 		keys["rendermode"] = "1";
-		keys["renderamt"] = "" + renderAmt;
+		keys["renderamt"] = "" + g_renderamt;
 		keys["spawnflags"] = "1";
 		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("cycler", keys, true);		
 		ghostCam.pev.solid = SOLID_NOT;
@@ -44,6 +40,7 @@ class GhostCam
 
 		dictionary rkeys;
 		rkeys["target"] = string(ghostCam.pev.targetname);
+		rkeys["targetname"] = g_ent_prefix + "render_" + ghostId;
 		rkeys["spawnflags"] = "" + (1 | 4 | 8 | 64); // no renderfx + no rendermode + no rendercolor + affect activator
 		rkeys["renderamt"] = "0";
 		CBaseEntity@ hideGhostCam = g_EntityFuncs.CreateEntity("env_render_individual", rkeys, true);
@@ -52,6 +49,33 @@ class GhostCam
 		createCameraHat();
 		
 		initialized = true;
+	}
+	
+	void debug(CBasePlayer@ plr) {
+		debug_plr(plr, h_plr);
+		
+		conPrintln(plr, "    cam ents: " + (h_cam.IsValid() ? string(h_cam.GetEntity().pev.targetname) : "null") +
+				", " + (h_render_off.IsValid() ? string(h_render_off.GetEntity().pev.targetname) : "null") +
+				", " + (h_hat.IsValid() ? string(h_hat.GetEntity().pev.targetname) : "null") + 
+				", " + (h_watch_hat.IsValid() ? "valid" : "null"));
+		
+		conPrintln(plr, "    initialized: " + (initialized ? "true" : "false") + 
+						", isPlayerModel: " + (isPlayerModel ? "true" : "false"));
+	}
+	
+	string getPlayerModel() {
+		CBaseEntity@ plr = h_plr;
+		if (plr is null)
+			return "models/player.mdl";
+	
+		KeyValueBuffer@ p_PlayerInfo = g_EngineFuncs.GetInfoKeyBuffer( plr.edict() );
+		string playerModel = p_PlayerInfo.GetValue( "model" ).ToLowercase();
+		
+		if (g_player_model_precache.exists(playerModel)) {
+			return "models/player/" + playerModel + "/" + playerModel + ".mdl";
+		}
+		
+		return "models/player.mdl";
 	}
 	
 	// custom keyvalues cause crashes, so this just searches for any model attached to the plater which is most likely a hat.
@@ -91,7 +115,7 @@ class GhostCam
 		keys["model"] = "" + playerHat.pev.model;
 		keys["targetname"] = string(cam.pev.targetname);
 		keys["rendermode"] = "1";
-		keys["renderamt"] = "" + renderAmt;
+		keys["renderamt"] = "" + g_renderamt;
 		keys["spawnflags"] = "1";
 		CBaseEntity@ camHat = g_EntityFuncs.CreateEntity("env_sprite", keys, true);	
 
@@ -119,7 +143,7 @@ class GhostCam
 		for (uint i = 0; i < stateKeys.length(); i++)
 		{
 			PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-			CBasePlayer@ statePlr = cast<CBasePlayer@>(state.plr.GetEntity());
+			CBasePlayer@ statePlr = cast<CBasePlayer@>(state.h_plr.GetEntity());
 			
 			if (statePlr is null)
 				continue;
@@ -136,6 +160,19 @@ class GhostCam
 		
 		// always hide observer's own camera
 		hideGhostCam.Use(plr, plr, USE_ON);
+	}
+	
+	void updateModel() {
+		if (!isValid()) {
+			return;
+		}
+		
+		isPlayerModel = g_use_player_models;
+		CBaseEntity@ cam = h_cam;
+		
+		g_EntityFuncs.Remove(h_hat);
+		g_EntityFuncs.SetModel(cam, g_use_player_models ? getPlayerModel() : g_camera_model);
+		createCameraHat();
 	}
 	
 	void toggleFlashlight() {
@@ -216,9 +253,9 @@ class GhostCam
 			for (uint i = 0; i < stateKeys.length(); i++)
 			{
 				PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-				CBaseEntity@ plr = state.plr;
+				CBaseEntity@ plr = state.h_plr;
 				if (plr !is null && state.shouldSeeGhosts()) {
-					int scale = cvar_use_player_models.GetInt() != 0 ? 10 : 4;
+					int scale = isPlayerModel ? 10 : 4;
 					te_smoke(cam.pev.origin - Vector(0,0,24), "sprites/steam1.spr", scale, 40, MSG_ONE_UNRELIABLE, plr.edict());
 					g_SoundSystem.PlaySound( cam.edict(), CHAN_STATIC, "player/pl_organic2.wav", 0.8f, 1.0f, 0, 50, plr.entindex());
 				}
@@ -263,9 +300,11 @@ class GhostCam
 					    "\nArmor:  " + int(plr.pev.armorvalue) +
 					    "\nScore:    " + int(plr.pev.frags);
 		
-		if (cvar_use_player_models.GetInt() != 0) {
-			cam.pev.sequence = 10;
-			cam.pev.framerate = 0.25f;
+		if (isPlayerModel) {
+			if (cam.pev.sequence != 10 || cam.pev.framerate != 0.25f) {
+				cam.pev.sequence = 10;
+				cam.pev.framerate = 0.25f;
+			}
 		
 			float angle_y = plr.pev.v_angle.y;
 			float angle_x = -plr.pev.v_angle.x;
