@@ -5,14 +5,18 @@ int ghostId = 0;
 dictionary g_player_states;
 
 string g_camera_model = "models/as_ghosts/camera.mdl";
-string g_ent_prefix = "plugin_ghost";
+string g_ent_prefix = "plugin_ghost_";
 
 dictionary g_player_model_precache;
 
 CCVar@ cvar_use_player_models;
 CCVar@ cvar_default_mode;
 
-bool debug_mode = false;
+bool debug_mode = true;
+
+bool g_first_map_load = true;
+bool g_use_player_models = true;
+bool g_force_visible = false;
 
 enum ghost_modes {
 	MODE_HIDE = 0,
@@ -23,17 +27,22 @@ enum ghost_modes {
 
 class PlayerState
 {
-	EHandle plr;
+	EHandle h_plr;
 	GhostCam cam;
 	int visbilityMode = cvar_default_mode.GetInt();
 	int viewingMonsterInfo = 0;
 	
 	bool shouldSeeGhosts() {
-		if (visbilityMode == MODE_SHOW)
+		if (visbilityMode == MODE_SHOW || g_force_visible)
 			return true;
 			
-		CBasePlayer@ statePlr = cast<CBasePlayer@>(plr.GetEntity());
-		return visbilityMode == MODE_HIDE_IF_ALIVE && statePlr !is null && statePlr.GetObserver().IsObserver();
+		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+		return visbilityMode == MODE_HIDE_IF_ALIVE && plr !is null && plr.GetObserver().IsObserver();
+	}
+	
+	void debug(CBasePlayer@ plr) {		
+		debug_plr(plr, h_plr);
+		conPrintln(plr, "    mode: " + visbilityMode + ", info: " + viewingMonsterInfo);
 	}
 }
 
@@ -48,11 +57,15 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::ClientPutInServer, @ClientJoin );
 	
 	@cvar_use_player_models = CCVar("player_models", 1, "show player models instead of cameras", ConCommandFlag::AdminOnly);
-	@cvar_default_mode = CCVar("default_mode", MODE_HIDE_IF_ALIVE, "ghost visibility mode", ConCommandFlag::AdminOnly);
+	@cvar_default_mode = CCVar("default_mode", MODE_SHOW, "ghost visibility mode", ConCommandFlag::AdminOnly);
+	
+	delete_ghosts();
 	
 	populatePlayerStates();
 	
 	g_Scheduler.SetInterval("ghostLoop", 0.05, -1);
+	
+	create_ghosts();
 }
 
 void MapInit()
@@ -63,6 +76,11 @@ void MapInit()
 
 void MapActivate()
 {
+	if (g_first_map_load) {
+		g_first_map_load = false;
+		g_use_player_models = cvar_use_player_models.GetInt() != 0;
+	}
+	
 	g_player_model_precache.clear();
 	
 	CBaseEntity@ precacheEnt = g_EntityFuncs.FindEntityByTargetname(null, "PlayerModelPrecacheDyn");
@@ -78,9 +96,7 @@ void MapActivate()
 		}
 		
 	} else {
-		if (cvar_use_player_models.GetInt() != 0) {
-			println("PlayerModelPrecacheDyn entity not found. Did you install the latest version of the PlayerModelPrecacheDyn plugin? Ghost player models aren't going to work without that.\n");
-		}
+		println("PlayerModelPrecacheDyn entity not found. Did you install the latest version of the PlayerModelPrecacheDyn plugin? Ghost player models aren't going to work without that.\n");
 	}
 }
 
@@ -96,7 +112,7 @@ void ghostLoop() {
 			continue;
 		}
 		
-		CBasePlayer@ plr = cast<CBasePlayer@>(state.plr.GetEntity());
+		CBasePlayer@ plr = cast<CBasePlayer@>(state.h_plr.GetEntity());
 		if (plr !is null && plr.IsAlive()) {			
 			Math.MakeVectors( plr.pev.v_angle );
 			Vector lookDir = g_Engine.v_forward;
@@ -133,14 +149,13 @@ void ghostLoop() {
 		}
 		
 		// show spectator info
-		CBasePlayer@ plr = cast<CBasePlayer@>(state.plr.GetEntity());
+		CBasePlayer@ plr = cast<CBasePlayer@>(state.h_plr.GetEntity());
 		CBaseEntity@ cam = state.cam.h_cam;
 		if (plr !is null) {
 			Math.MakeVectors( plr.pev.v_angle );
 			Vector lookDir = g_Engine.v_forward;
 			
 			CBaseEntity@ phit = null;
-			bool shouldShowInfo = false;
 			bool isObserver = plr.GetObserver().IsObserver();
 			if (isObserver && cam !is null) {
 				TraceResult tr;
@@ -215,7 +230,8 @@ HookReturnCode PlayerLeftObserver( CBasePlayer@ plr ) {
 }
 
 HookReturnCode ClientJoin( CBasePlayer@ plr ) {
-	getPlayerState(plr);
+	PlayerState@ state = getPlayerState(plr);
+	state.h_plr = plr;
 	update_ghost_visibility();
 	return HOOK_CONTINUE;
 }
@@ -229,13 +245,166 @@ void update_ghost_visibility() {
 	}
 }
 
+void update_ghost_models() {
+	array<string>@ stateKeys = g_player_states.getKeys();
+	for (uint i = 0; i < stateKeys.length(); i++)
+	{
+		PlayerState@ s = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+		s.cam.updateModel();
+	}
+	
+	update_ghost_visibility();
+}
+
+void delete_ghosts() {
+	// delete old ghost ents in case plugin was reloaded while map is running
+	CBaseEntity@ ent = null;
+	do {
+		@ent = g_EntityFuncs.FindEntityByTargetname(ent, g_ent_prefix + "*"); 
+		if (ent !is null)
+		{
+			g_EntityFuncs.Remove(ent);
+		}
+	} while (ent !is null);
+}
+
+void create_ghosts() {
+	array<string>@ stateKeys = g_player_states.getKeys();
+	for (uint i = 0; i < stateKeys.length(); i++)
+	{
+		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+		CBasePlayer@ plr = cast<CBasePlayer@>(state.h_plr.GetEntity());
+		if (plr !is null && plr.GetObserver().IsObserver()) {
+			state.cam.init(plr);
+		}
+	}
+	
+	update_ghost_visibility();
+}
+
+void delay_debug_all(EHandle h_plr, uint idx) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr is null)
+		return;
+	
+	array<string>@ stateKeys = g_player_states.getKeys();
+	
+	if (idx < stateKeys.size()) {
+		PlayerState@ dstate = cast<PlayerState@>( g_player_states[stateKeys[idx]] );
+		conPrintln(plr, stateKeys[idx]);
+		dstate.debug(plr);
+		dstate.cam.debug(plr);
+		
+		g_Scheduler.SetTimeout("delay_debug_all", 0.05, h_plr, idx+1);
+	} else {
+		conPrintln(plr, "" + idx + " states");
+	}
+}
+
+void reload_ghosts() {
+	delete_ghosts();
+	create_ghosts();
+	update_ghost_visibility();
+}
+
 void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	PlayerState@ state = getPlayerState(plr);
+	bool isAdmin = g_PlayerFuncs.AdminLevel(plr) >= ADMIN_YES;
 	
 	if (args.ArgC() >= 2)
 	{
 		if (args[1] == "version") {
 			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP\n");
+		}
+		else if (args[1] == "renderamt" && args.ArgC() >= 3 && isAdmin) {
+			g_renderamt = atof(args[2]);
+			if (g_renderamt == -1)
+				g_renderamt = 96; // default
+			g_PlayerFuncs.SayText(plr, "Ghost renderamt is " + g_renderamt + "\n");
+			reload_ghosts();
+		}
+		else if (args[1] == "force" && args.ArgC() >= 3 && isAdmin) {
+			int newMode = atoi(args[2]);
+			g_force_visible = newMode != 0;
+			g_PlayerFuncs.SayText(plr, "Ghost visibility " + (g_force_visible ? "" : "not ") + "forced on\n");
+			update_ghost_visibility();
+		}
+		else if (args[1] == "trace" && isAdmin) {
+			array<string>@ stateKeys = g_player_states.getKeys();
+			for (uint i = 0; i < stateKeys.length(); i++)
+			{
+				PlayerState@ dstate = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+				CBasePlayer@ statePlr = cast<CBasePlayer@>(dstate.h_plr.GetEntity());
+				
+				if (statePlr is null)
+					continue;
+				
+				if (state.shouldSeeGhosts() && statePlr.GetObserver().IsObserver())
+					te_beampoints(plr.pev.origin, statePlr.pev.origin);
+			}
+		}
+		else if (args[1] == "reload" && isAdmin) {
+			reload_ghosts();
+			g_PlayerFuncs.SayText(plr, "Reloaded ghosts\n");
+		}
+		else if (args[1] == "reload_me" && isAdmin) {
+			state.h_plr = plr;
+			g_PlayerFuncs.SayText(plr, "Updating your state player\n");
+		}
+		else if (args[1] == "reload_hard" && isAdmin) {
+			int deleteCount = 0;
+			
+			array<string>@ stateKeys = g_player_states.getKeys();
+			for (uint i = 0; i < stateKeys.length(); i++) {
+				PlayerState@ dstate = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+				CBasePlayer@ dplr = cast<CBasePlayer@>(dstate.h_plr.GetEntity());
+				if (dplr is null or !dplr.IsConnected()) {
+					g_player_states.delete(stateKeys[i]);
+					deleteCount++;
+				}
+			}
+
+			populatePlayerStates();
+			reload_ghosts();
+			
+			g_PlayerFuncs.SayText(plr, "Reloaded ghosts and deleted " + deleteCount + " disconnected player states\n");
+		}
+		else if (args[1] == "reload_harder" && isAdmin) {
+			int deleteCount = g_player_states.getSize();
+			g_player_states.deleteAll();
+			populatePlayerStates();
+			reload_ghosts();
+			
+			g_PlayerFuncs.SayText(plr, "Reloaded ghosts and deleted " + deleteCount + " player states\n");
+			return;
+		}
+		else if (args[1] == "debug" && args.ArgC() >= 3 && isAdmin) {			
+			if (args[2] == "count") {
+				conPrintln(plr, "" + g_player_states.getSize() + " player states");
+			}
+			else if (args[2] == "all") {
+				delay_debug_all(EHandle(plr), 0);
+			} else {
+				CBasePlayer@ target = getPlayer(plr, args[2]);
+				if (target !is null) {
+					PlayerState@ targetState = getPlayerState(target);
+					targetState.debug(plr);
+					targetState.cam.debug(plr);
+				}
+			}
+		}
+		else if (args[1] == "players" && args.ArgC() >= 3) {
+			if (!isAdmin) {
+				g_PlayerFuncs.SayText(plr, "Only admins can use this command\n");
+				return;
+			}
+			
+			int newMode = atoi(args[2]);
+			
+			g_use_player_models = newMode != 0;
+			
+			update_ghost_models();
+			g_PlayerFuncs.SayText(plr, "Ghost player models " + (g_use_player_models ? "enabled" : "disabled") + "\n");
 		}
 		else if (isdigit(args[1])) {
 			int newMode = atoi(args[1]);
@@ -270,7 +439,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		
 		bool modelPrecached = g_player_model_precache.exists(playerModel);
 		string precachedString = "Your player model is" + (modelPrecached ? "" : " not") + " precached.";
-		if (cvar_use_player_models.GetInt() == 0) {
+		if (!g_use_player_models) {
 			precachedString = "";
 		}
 		
