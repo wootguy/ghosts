@@ -4,12 +4,15 @@ class GhostCam
 {
 	EHandle h_plr;
 	EHandle h_cam;
-	EHandle h_render_off;
+	EHandle h_render_off; // also used as a thirdperson view target
 	EHandle h_hat;
 	EHandle h_watch_hat; // hat entity created by the hats plugin
 	bool initialized = false;
 	bool isPlayerModel;
+	bool isThirdPerson = false;
+	float nextThirdPersonToggle = 0;
 	Vector lastOrigin;
+	Vector lastThirdPersonOrigin;
 	
 	GhostCam() {}
 	
@@ -40,15 +43,41 @@ class GhostCam
 
 		dictionary rkeys;
 		rkeys["target"] = string(ghostCam.pev.targetname);
+		rkeys["origin"] = plr.pev.origin.ToString();
 		rkeys["targetname"] = g_ent_prefix + "render_" + ghostId;
 		rkeys["spawnflags"] = "" + (1 | 4 | 8 | 64); // no renderfx + no rendermode + no rendercolor + affect activator
 		rkeys["renderamt"] = "0";
 		CBaseEntity@ hideGhostCam = g_EntityFuncs.CreateEntity("env_render_individual", rkeys, true);
+		
+		// making this ent "visible" so it can be used as a third person view target
+		g_EntityFuncs.SetModel(hideGhostCam, "sprites/saveme.spr");
+		hideGhostCam.pev.rendermode = 1;
+		hideGhostCam.pev.renderamt = 0;
+		hideGhostCam.pev.movetype = MOVETYPE_NOCLIP;
+		
 		h_render_off = hideGhostCam;
 
 		createCameraHat();
 		
 		initialized = true;
+		isThirdPerson = false;
+	}
+	
+	void toggleThirdperson() {
+		if (!isValid()) {
+			return;
+		}
+		CBaseEntity@ plr = h_plr;
+		CBaseEntity@ hideGhostCam = h_render_off;
+		
+		isThirdPerson = !isThirdPerson;
+		if (isThirdPerson) {
+			g_EngineFuncs.SetView( h_plr.GetEntity().edict(), h_render_off.GetEntity().edict() );
+			hideGhostCam.Use(plr, plr, USE_OFF);
+		} else {
+			g_EngineFuncs.SetView( h_plr.GetEntity().edict(), h_plr.GetEntity().edict() );
+			hideGhostCam.Use(plr, plr, USE_ON);
+		}
 	}
 	
 	void debug(CBasePlayer@ plr) {
@@ -159,7 +188,8 @@ class GhostCam
 		}
 		
 		// always hide observer's own camera
-		hideGhostCam.Use(plr, plr, USE_ON);
+		if (!isThirdPerson)
+			hideGhostCam.Use(plr, plr, USE_ON);
 	}
 	
 	void updateModel() {
@@ -246,6 +276,9 @@ class GhostCam
 	}
 	
 	void remove() {
+		if (isThirdPerson) {
+			toggleThirdperson();
+		}
 		if (h_cam.IsValid()) {
 			CBaseEntity@ cam = h_cam;
 			
@@ -279,6 +312,7 @@ class GhostCam
 	
 		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 		CBaseMonster@ cam = cast<CBaseMonster@>(h_cam.GetEntity());
+		CBaseEntity@ thirdPersonTarget = h_render_off;
 		CBaseEntity@ hat = h_hat;
 		
 		if (hat !is null) {
@@ -293,7 +327,43 @@ class GhostCam
 		}
 		
 		cam.pev.colormap = plr.pev.colormap;
-		cam.pev.origin = plr.pev.origin;
+		
+		{
+			Vector delta = plr.pev.origin - lastOrigin; 
+			cam.pev.velocity = delta*0.05f*100.0f;
+			
+			lastOrigin = cam.pev.origin;
+		}
+		
+		Math.MakeVectors( plr.pev.v_angle );
+		
+		if (thirdPersonTarget !is null) {
+			if (isThirdPerson) {
+				Vector idealPos = plr.pev.origin - g_Engine.v_forward*96 + g_Engine.v_up*16;
+				
+				TraceResult tr;
+				g_Utility.TraceLine( plr.pev.origin, idealPos, ignore_monsters, null, tr );
+				
+				if (tr.fInOpen != 0) {
+					g_EngineFuncs.SetView( plr.edict(), thirdPersonTarget.edict() );
+					//thirdPersonTarget.pev.origin = tr.vecEndPos;
+					//thirdPersonTarget.pev.angles = plr.pev.v_angle;
+					
+					float rot_x_diff = AngleDifference(plr.pev.v_angle.x, thirdPersonTarget.pev.angles.x);
+					float rot_y_diff = AngleDifference(plr.pev.v_angle.y, thirdPersonTarget.pev.angles.y);
+					
+					Vector delta = tr.vecEndPos - lastThirdPersonOrigin; 
+					thirdPersonTarget.pev.velocity = delta*0.05f*100.0f;
+					thirdPersonTarget.pev.avelocity = Vector(rot_x_diff*10, rot_y_diff*10, 0);
+				} else {
+					g_EngineFuncs.SetView( plr.edict(), plr.edict() );
+				}
+			} else {
+				thirdPersonTarget.pev.origin = plr.pev.origin;
+			}
+			
+			lastThirdPersonOrigin = thirdPersonTarget.pev.origin;
+		}
 		
 		cam.pev.netname = "Ghost:  " + plr.pev.netname +
 					    "\nCorpse: " + (plr.GetObserver().HasCorpse() ? "Yes" : "No") +
@@ -306,44 +376,31 @@ class GhostCam
 				cam.pev.framerate = 0.25f;
 			}
 		
-			float angle_y = plr.pev.v_angle.y;
-			float angle_x = -plr.pev.v_angle.x;
+			
 			
 			// rotate lower body slower than upper body
 			//float torsoAngle = AngleDifference(angle_y, cam.pev.angles.y) * (30.0f / 90.0f);
 			// reverse angle looks better for the swimming animation (leaning into turns)
-			float torsoAngle = AngleDifference(cam.pev.angles.y, angle_y) * (30.0f / 90.0f);
-			cam.pev.angles.y -= torsoAngle*0.75f;
-			torsoAngle = AngleDifference(cam.pev.angles.y, angle_y) * (30.0f / 90.0f);
+			float torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
+			torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
 		
 			for (int k = 0; k < 4; k++) {
 				cam.SetBoneController(k, torsoAngle);
 			}
-
-			//cam.SetBlending(0, angle_x);
-			cam.pev.angles.x = angle_x;
-			
-			
-			// attachement point isn't consistent across all models
-			/*
-			Vector attachPoint;
-			Vector attachAngles;
-			cam.GetAttachment(4, attachPoint, attachAngles);
-			cam.pev.origin = cam.pev.origin + (cam.pev.origin - attachPoint);
-			*/
-			
-			//cam.pev.frame = 0;
-			//cam.ResetSequenceInfo();
-			//cam.pev.framerate = 1.0f;
-		} else {
-			cam.pev.angles = plr.pev.v_angle;
-			cam.pev.angles.x = -cam.pev.angles.x;
 		}
+		
+		float angle_diff_x = AngleDifference(-plr.pev.v_angle.x, cam.pev.angles.x);
+		float angle_diff_y = AngleDifference(plr.pev.v_angle.y, cam.pev.angles.y);
+		cam.pev.avelocity = Vector(angle_diff_x*10, angle_diff_y*10, 0);
 		
 		if ((plr.pev.button & IN_USE) != 0) {
 			sprayLogo();
 		}
-		if (false && (plr.pev.button & IN_ATTACK2) != 0) {
+		if ((plr.pev.button & IN_ALT1) != 0 && nextThirdPersonToggle < g_Engine.time) {
+			nextThirdPersonToggle = g_Engine.time + 0.5f;
+			toggleThirdperson();
+		}
+		if (false && (plr.pev.button & IN_ATTACK) != 0) {
 			shoot();
 		}
 	}

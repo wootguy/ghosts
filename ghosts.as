@@ -257,8 +257,22 @@ void update_ghost_models() {
 }
 
 void delete_ghosts() {
-	// delete old ghost ents in case plugin was reloaded while map is running
+
+	// reset views so thirdperson view doesn't get stuck
 	CBaseEntity@ ent = null;
+	do {
+		@ent = g_EntityFuncs.FindEntityByClassname(ent, "player"); 
+		if (ent !is null)
+		{
+			CBasePlayer@ plr = cast<CBasePlayer@>(ent);
+			if (plr !is null && plr.IsConnected() && plr.GetObserver().IsObserver()) {
+				g_EngineFuncs.SetView( plr.edict(), plr.edict() );
+			}
+		}
+	} while (ent !is null);
+
+	// delete old ghost ents in case plugin was reloaded while map is running
+	@ent = null;
 	do {
 		@ent = g_EntityFuncs.FindEntityByTargetname(ent, g_ent_prefix + "*"); 
 		if (ent !is null)
@@ -404,7 +418,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			g_use_player_models = newMode != 0;
 			
 			update_ghost_models();
-			g_PlayerFuncs.SayText(plr, "Ghost player models " + (g_use_player_models ? "enabled" : "disabled") + "\n");
+			g_PlayerFuncs.SayTextAll(plr, "Ghost player models " + (g_use_player_models ? "enabled" : "disabled") + "\n");
 		}
 		else if (isdigit(args[1])) {
 			int newMode = atoi(args[1]);
@@ -424,12 +438,20 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			update_ghost_visibility();
 		}
 
-		if (debug_mode) {
+		if (debug_mode && isAdmin) {
 			if (args[1] == "a") {
 				plr.GetObserver().StartObserver(plr.pev.origin, plr.pev.v_angle, true);
 			}
 			if (args[1] == "b") {
 				plr.EndRevive(0);
+			}
+			if (args[1] == "c") {
+				te_beampoints(plr.pev.origin, state.cam.h_render_off.GetEntity().pev.origin);
+				g_EngineFuncs.SetView( plr.edict(), state.cam.h_render_off.GetEntity().edict() );
+			}
+			if (args[1] == "d") {
+				
+				g_EngineFuncs.SetView( plr.edict(), plr.edict() );
 			}
 		}
 		
