@@ -76,7 +76,7 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::PlayerUse, @PlayerUse );
 	
 	@cvar_use_player_models = CCVar("player_models", 1, "show player models instead of cameras", ConCommandFlag::AdminOnly);
-	@cvar_default_mode = CCVar("default_mode", MODE_HIDE_IF_BLOCKING, "ghost visibility mode", ConCommandFlag::AdminOnly);
+	@cvar_default_mode = CCVar("default_mode", MODE_SHOW, "ghost visibility mode", ConCommandFlag::AdminOnly);
 	
 	delete_ghosts();
 	
@@ -125,6 +125,15 @@ void MapActivate()
 	} else {
 		println("PlayerModelPrecacheDyn entity not found. Did you install the latest version of the PlayerModelPrecacheDyn plugin? Ghost player models aren't going to work without that.\n");
 	}
+}
+
+bool isBlockingView(CBasePlayer@ plr, CBaseEntity@ ghost) {
+	if (ghost is null)
+		return false;
+	Math.MakeVectors(plr.pev.v_angle);
+	Vector delta = ghost.pev.origin - plr.pev.origin;
+	float dist = delta.Length();
+	return dist < 64 || DotProduct(g_Engine.v_forward, delta.Normalize()) > 0.3f && dist < 200;
 }
 
 void ghostLoop() {
@@ -184,15 +193,13 @@ void ghostLoop() {
 				if (k == i) {
 					continue;
 				}
-				
+
 				PlayerState@ gstate = playersWithStates[k].state;
 				if (gstate.cam.isValid()) {
-					Math.MakeVectors(plr.pev.v_angle);
-					Vector delta = gstate.cam.h_cam.GetEntity().pev.origin - plr.pev.origin;
-					bool isBlockingView = DotProduct(g_Engine.v_forward, delta.Normalize()) > 0.3f && delta.Length() < 200;
+					bool blockingView = isBlockingView(plr, gstate.cam.h_cam);
 					CBaseEntity@ renderOff = gstate.cam.h_render_off;
-					renderOff.Use(plr, plr, isBlockingView ? USE_ON : USE_OFF);
-					isGhostVisible = !isBlockingView;
+					renderOff.Use(plr, plr, blockingView ? USE_ON : USE_OFF);
+					isGhostVisible = !blockingView;
 				}
 			}
 		}
@@ -225,23 +232,28 @@ void ghostLoop() {
 				params.channel = 3;
 				
 				if (isObserver && phit.IsPlayer()) {
-						params.r1 = 6;
-						params.g1 = 170;
-						params.b1 = 94;
-						
-						string info = "Player:  " + phit.pev.netname +
-									   "\nHealth:  " + int(phit.pev.health) +
-									   "\nArmor:  " + int(plr.pev.armorvalue) +
-									   "\nScore:    " + int(phit.pev.frags);
-						
-						g_PlayerFuncs.HudMessage(plr, params, info);
+					CBasePlayer@ hitPlr = cast<CBasePlayer@>(phit);
+					params.r1 = 6;
+					params.g1 = 170;
+					params.b1 = 94;
+					
+					string info = "Player:  " + phit.pev.netname +
+								   "\nHealth:  " + int(phit.pev.health) +
+								   "\nArmor:  " + int(plr.pev.armorvalue) +
+								   "\nMode:   " + int(getPlayerState(hitPlr).visbilityMode);
+					
+					g_PlayerFuncs.HudMessage(plr, params, info);
 				} else if (state.viewingMonsterInfo == 0 && string(phit.pev.targetname).Find(g_ent_prefix) == 0) {
 					// show ghost info to living players, only if a monster is not in sight
 					params.r1 = 163;
 					params.g1 = 155;
 					params.b1 = 255;
 					
-					g_PlayerFuncs.HudMessage(plr, params, phit.pev.netname);
+					string info = "" + phit.pev.netname;
+					if (isObserver || true) {
+						info += "\nMode:    " + getPlayerState(plr).visbilityMode;
+					}
+					g_PlayerFuncs.HudMessage(plr, params, info);
 				}
 				
 				if (phit.IsMonster() && phit.IsAlive()) {
@@ -392,7 +404,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	if (args.ArgC() >= 2)
 	{
 		if (args[1] == "version") {
-			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP2\n");
+			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP3\n");
 		}
 		else if (args[1] == "renderamt" && args.ArgC() >= 3 && isAdmin) {
 			g_renderamt = atof(args[2]);
@@ -594,7 +606,41 @@ HookReturnCode PlayerUse( CBasePlayer@ pPlayer, uint& out uiFlags )
 	{
 		// prevent using cyclers since that messes up their animations
 		uiFlags |= PlrHook_SkipUse;
-		g_SoundSystem.PlaySound( pPlayer.edict(), CHAN_ITEM, "common/wpn_denyselect.wav", 0.4f, 1.0f, pPlayer.entindex(), 100);
+		string ghostId = pObject.pev.noise;
+		
+		bool collectedGhostie = false;
+		
+		PlayerState@ state = getPlayerState(pPlayer);
+		if (state.shouldSeeGhosts(pPlayer) && state.visbilityMode != MODE_HIDE_IF_BLOCKING) {
+			for ( int i = 1; i <= g_Engine.maxClients; i++ )
+			{
+				CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
+				if (p is null or !p.IsConnected())
+					continue;
+				if (getPlayerUniqueId(p) == ghostId) {
+					CBaseEntity@ observerTarget = p.GetObserver().GetObserverTarget();
+					if (observerTarget !is null && observerTarget.entindex() == pPlayer.entindex()) {
+						p.GetObserver().SetObserverTarget(null);
+						p.GetObserver().SetMode(OBS_ROAMING);
+						g_PlayerFuncs.SayText(pPlayer, "Dropped " + p.pev.netname + "\n");
+						g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " dropped you\n");
+					} else {
+						p.GetObserver().SetObserverTarget(pPlayer);
+						p.GetObserver().SetMode(OBS_CHASE_FREE);
+						p.pev.angles.x = -15;
+						p.pev.angles.y = pPlayer.pev.v_angle.y;
+						p.pev.fixangle = FAM_FORCEVIEWANGLES;
+						g_PlayerFuncs.SayText(pPlayer, "Collected " + p.pev.netname + "\n");
+						g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " collected you\n");
+					}
+					collectedGhostie = true;
+					break;
+				}
+			}
+		}
+		
+		string snd = collectedGhostie ? "common/wpn_select.wav" : "common/wpn_denyselect.wav";
+		g_SoundSystem.PlaySound( pPlayer.edict(), CHAN_ITEM, snd, 0.4f, 1.0f, pPlayer.entindex(), 100);
 	}
 	
 	return HOOK_CONTINUE;
