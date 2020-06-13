@@ -28,30 +28,37 @@ enum ghost_modes {
 
 class PlayerState
 {
-	EHandle h_plr;
+	// Never store player handle? It needs to be set to null on disconnect or else states start sharing
+	// player handles and cause weird bugs or break states entirely. Check if disconnect is called
+	// if player leaves during level change.
+
 	GhostCam cam;
 	int visbilityMode = cvar_default_mode.GetInt();
 	int viewingMonsterInfo = 0;
 	
-	bool shouldSeeGhosts() {
+	bool shouldSeeGhosts(CBasePlayer@ plr) {
 		if (visbilityMode == MODE_SHOW || g_force_visible)
 			return true;
 			
 		if (visbilityMode == MODE_HIDE_IF_BLOCKING)
 			return true; // individual ghosts will be hidden later
 			
-		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 		return visbilityMode == MODE_HIDE_IF_ALIVE && plr !is null && plr.GetObserver().IsObserver();
 	}
 	
 	void debug(CBasePlayer@ plr) {		
-		debug_plr(plr, h_plr);
 		conPrintln(plr, "    mode: " + visbilityMode + ", info: " + viewingMonsterInfo);
 	}
+}
+
+// to be used within a single server frame
+class PlayerWithState {
+	CBasePlayer@ plr;
+	PlayerState@ state;
 	
-	bool isValid() {
-		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
-		return plr !is null && plr.IsConnected();
+	PlayerWithState(CBasePlayer@ plr, PlayerState@ state) {
+		@this.plr = @plr;
+		@this.state = @state;
 	}
 }
 
@@ -64,6 +71,7 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::PlayerEnteredObserver, @PlayerEnteredObserver );
 	g_Hooks.RegisterHook( Hooks::Player::PlayerLeftObserver, @PlayerLeftObserver );
 	g_Hooks.RegisterHook( Hooks::Player::ClientPutInServer, @ClientJoin );
+	g_Hooks.RegisterHook( Hooks::Player::ClientDisconnect, @ClientLeave );
 	g_Hooks.RegisterHook( Hooks::Player::PlayerUse, @PlayerUse );
 	
 	@cvar_use_player_models = CCVar("player_models", 1, "show player models instead of cameras", ConCommandFlag::AdminOnly);
@@ -83,7 +91,7 @@ void MapInit()
 	ghostId = 0;
 	g_Game.PrecacheModel(g_camera_model);
 	
-	// reset camera state
+	// reset camera states
 	array<string>@ stateKeys = g_player_states.getKeys();
 	for (uint i = 0; i < stateKeys.length(); i++)
 	{
@@ -119,19 +127,19 @@ void MapActivate()
 }
 
 void ghostLoop() {
-	array<string>@ stateKeys = g_player_states.getKeys();
+	array<PlayerWithState@> playersWithStates = getPlayersWithState();
 	
-	// check if player is viewing monster info so spectators don't get in the way later
-	for (uint i = 0; i < stateKeys.length(); i++)
+	// check if player is viewing monster info so spectators don't get in the way later	
+	for (uint i = 0; i < playersWithStates.length(); i++)
 	{
-		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+		CBasePlayer@ plr = playersWithStates[i].plr;
+		PlayerState@ state = playersWithStates[i].state;
 		
-		if (!state.shouldSeeGhosts()) {
+		if (!state.shouldSeeGhosts(plr)) {
 			continue;
 		}
 		
-		CBasePlayer@ plr = cast<CBasePlayer@>(state.h_plr.GetEntity());
-		if (plr !is null && plr.IsAlive()) {			
+		if (plr.IsAlive()) {
 			Math.MakeVectors( plr.pev.v_angle );
 			Vector lookDir = g_Engine.v_forward;
 			
@@ -146,9 +154,9 @@ void ghostLoop() {
 	}
 	
 	// make cameras solid for tracing
-	for (uint i = 0; i < stateKeys.length(); i++)
+	for (uint i = 0; i < playersWithStates.length(); i++)
 	{
-		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+		PlayerState@ state = playersWithStates[i].state;
 		CBaseEntity@ cam = state.cam.h_cam;
 		
 		if (cam !is null) {
@@ -157,22 +165,26 @@ void ghostLoop() {
 		}
 	}
 	
-	for (uint i = 0; i < stateKeys.length(); i++)
+	for (uint i = 0; i < playersWithStates.length(); i++)
 	{
-		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+		CBasePlayer@ plr = playersWithStates[i].plr;
+		PlayerState@ state = playersWithStates[i].state;
 
 		state.cam.think();
 		
-		if (!state.shouldSeeGhosts()) {
+		if (!state.shouldSeeGhosts(plr)) {
 			continue;
 		}
 		
 		// hide ghost if blocking view
 		bool isGhostVisible = true;
-		CBasePlayer@ plr = cast<CBasePlayer@>(state.h_plr.GetEntity());
-		if (plr !is null && plr.IsConnected() && plr.IsAlive() && state.visbilityMode == MODE_HIDE_IF_BLOCKING && !g_force_visible) {
-			for (uint k = 0; k < stateKeys.length(); k++) {
-				PlayerState@ gstate = cast<PlayerState@>( g_player_states[stateKeys[k]] );
+		if (plr.IsAlive() && state.visbilityMode == MODE_HIDE_IF_BLOCKING && !g_force_visible) {
+			for (uint k = 0; k < playersWithStates.length(); k++) {
+				if (k == i) {
+					continue;
+				}
+				
+				PlayerState@ gstate = playersWithStates[k].state;
 				if (gstate.cam.isValid()) {
 					Math.MakeVectors(plr.pev.v_angle);
 					Vector delta = gstate.cam.h_cam.GetEntity().pev.origin - plr.pev.origin;
@@ -186,7 +198,7 @@ void ghostLoop() {
 		
 		// show spectator info
 		CBaseEntity@ cam = state.cam.h_cam;
-		if (plr !is null && isGhostVisible) {
+		if (isGhostVisible) {
 			Math.MakeVectors( plr.pev.v_angle );
 			Vector lookDir = g_Engine.v_forward;
 			
@@ -241,9 +253,9 @@ void ghostLoop() {
 	}
 	
 	// make ghosts nonsolid again
-	for (uint i = 0; i < stateKeys.length(); i++)
+	for (uint i = 0; i < playersWithStates.length(); i++)
 	{
-		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+		PlayerState@ state = playersWithStates[i].state;
 		CBaseEntity@ cam = state.cam.h_cam;
 		
 		if (cam !is null) {
@@ -266,26 +278,31 @@ HookReturnCode PlayerLeftObserver( CBasePlayer@ plr ) {
 
 HookReturnCode ClientJoin( CBasePlayer@ plr ) {
 	PlayerState@ state = getPlayerState(plr);
-	state.h_plr = plr;
 	update_ghost_visibility();
 	return HOOK_CONTINUE;
 }
 
+HookReturnCode ClientLeave(CBasePlayer@ plr)
+{
+	delete_orphaned_ghosts();
+	return HOOK_CONTINUE;
+}
+
 void update_ghost_visibility() {
-	array<string>@ stateKeys = g_player_states.getKeys();
-	for (uint i = 0; i < stateKeys.length(); i++)
+	array<PlayerWithState@> playersWithStates = getPlayersWithState();
+	for (uint i = 0; i < playersWithStates.length(); i++)
 	{
-		PlayerState@ s = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-		s.cam.updateVisibility();
+		PlayerState@ state = playersWithStates[i].state;
+		state.cam.updateVisibility(playersWithStates);
 	}
 }
 
 void update_ghost_models() {
-	array<string>@ stateKeys = g_player_states.getKeys();
-	for (uint i = 0; i < stateKeys.length(); i++)
+	array<PlayerWithState@> playersWithStates = getPlayersWithState();
+	for (uint i = 0; i < playersWithStates.length(); i++)
 	{
-		PlayerState@ s = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-		s.cam.updateModel();
+		PlayerState@ state = playersWithStates[i].state;
+		state.cam.updateModel();
 	}
 	
 	update_ghost_visibility();
@@ -317,12 +334,23 @@ void delete_ghosts() {
 	} while (ent !is null);
 }
 
-void create_ghosts() {
+void delete_orphaned_ghosts() {
 	array<string>@ stateKeys = g_player_states.getKeys();
 	for (uint i = 0; i < stateKeys.length(); i++)
 	{
 		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-		CBasePlayer@ plr = cast<CBasePlayer@>(state.h_plr.GetEntity());
+		if (!state.cam.isValid()) {
+			state.cam.remove();
+		}
+	}
+}
+
+void create_ghosts() {
+	array<PlayerWithState@> playersWithStates = getPlayersWithState();
+	for (uint i = 0; i < playersWithStates.length(); i++)
+	{
+		CBasePlayer@ plr = playersWithStates[i].plr;
+		PlayerState@ state = playersWithStates[i].state;
 		if (plr !is null && plr.GetObserver().IsObserver()) {
 			state.cam.init(plr);
 		}
@@ -379,16 +407,14 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			update_ghost_visibility();
 		}
 		else if (args[1] == "trace" && isAdmin) {
-			array<string>@ stateKeys = g_player_states.getKeys();
-			for (uint i = 0; i < stateKeys.length(); i++)
+			
+			array<PlayerWithState@> playersWithStates = getPlayersWithState();
+			for (uint i = 0; i < playersWithStates.length(); i++)
 			{
-				PlayerState@ dstate = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-				CBasePlayer@ statePlr = cast<CBasePlayer@>(dstate.h_plr.GetEntity());
+				CBasePlayer@ statePlr = playersWithStates[i].plr;
+				PlayerState@ dstate = playersWithStates[i].state;
 				
-				if (statePlr is null)
-					continue;
-				
-				if (state.shouldSeeGhosts() && statePlr.GetObserver().IsObserver())
+				if (state.shouldSeeGhosts(statePlr) && statePlr.GetObserver().IsObserver())
 					te_beampoints(plr.pev.origin, statePlr.pev.origin);
 			}
 		}
@@ -396,29 +422,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			reload_ghosts();
 			g_PlayerFuncs.SayText(plr, "Reloaded ghosts\n");
 		}
-		else if (args[1] == "reload_me" && isAdmin) {
-			state.h_plr = plr;
-			g_PlayerFuncs.SayText(plr, "Updating your state player\n");
-		}
 		else if (args[1] == "reload_hard" && isAdmin) {
-			int deleteCount = 0;
-			
-			array<string>@ stateKeys = g_player_states.getKeys();
-			for (uint i = 0; i < stateKeys.length(); i++) {
-				PlayerState@ dstate = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-				CBasePlayer@ dplr = cast<CBasePlayer@>(dstate.h_plr.GetEntity());
-				if (dplr is null or !dplr.IsConnected()) {
-					g_player_states.delete(stateKeys[i]);
-					deleteCount++;
-				}
-			}
-
-			populatePlayerStates();
-			reload_ghosts();
-			
-			g_PlayerFuncs.SayText(plr, "Reloaded ghosts and deleted " + deleteCount + " disconnected player states\n");
-		}
-		else if (args[1] == "reload_harder" && isAdmin) {
 			int deleteCount = g_player_states.getSize();
 			g_player_states.deleteAll();
 			populatePlayerStates();
