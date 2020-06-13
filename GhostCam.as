@@ -190,7 +190,7 @@ class GhostCam
 		h_hat = camHat;
 	}
 	
-	void updateVisibility() {
+	void updateVisibility(array<PlayerWithState@> playersWithStates) {
 		if (!isValid()) {
 			return;
 		}
@@ -198,16 +198,15 @@ class GhostCam
 		CBaseEntity@ plr = h_plr;
 		CBaseEntity@ hideGhostCam = h_render_off;
 		
-		array<string>@ stateKeys = g_player_states.getKeys();
-		for (uint i = 0; i < stateKeys.length(); i++)
+		for (uint i = 0; i < playersWithStates.length(); i++)
 		{
-			PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-			CBasePlayer@ statePlr = cast<CBasePlayer@>(state.h_plr.GetEntity());
+			CBasePlayer@ statePlr = playersWithStates[i].plr;
+			PlayerState@ state = playersWithStates[i].state;
 			
-			if (statePlr is null or statePlr.entindex() == plr.entindex())
+			if (statePlr.entindex() == plr.entindex())
 				continue;
 
-			if (state.shouldSeeGhosts()) {
+			if (state.shouldSeeGhosts(statePlr)) {
 				hideGhostCam.Use(statePlr, statePlr, USE_OFF);
 			} else {
 				hideGhostCam.Use(statePlr, statePlr, USE_ON);
@@ -309,12 +308,14 @@ class GhostCam
 		if (h_cam.IsValid()) {
 			CBaseEntity@ cam = h_cam;
 			
-			array<string>@ stateKeys = g_player_states.getKeys();
-			for (uint i = 0; i < stateKeys.length(); i++)
+			array<PlayerWithState@> playersWithStates = getPlayersWithState();
+			for (uint i = 0; i < playersWithStates.length(); i++)
 			{
-				PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
-				CBaseEntity@ plr = state.h_plr;
-				if (plr !is null && state.shouldSeeGhosts()) {
+				CBasePlayer@ plr = playersWithStates[i].plr;
+				PlayerState@ state = playersWithStates[i].state;
+				
+				// poof effect
+				if (state.shouldSeeGhosts(plr)) {
 					int scale = isPlayerModel ? 10 : 4;
 					te_smoke(cam.pev.origin - Vector(0,0,24), "sprites/steam1.spr", scale, 40, MSG_ONE_UNRELIABLE, plr.edict());
 					g_SoundSystem.PlaySound( cam.edict(), CHAN_STATIC, "player/pl_organic2.wav", 0.8f, 1.0f, 0, 50, plr.entindex());
