@@ -24,6 +24,7 @@ class GhostCam
 	bool showCameraCtrlHelp = true;
 	bool showThirdPersonHelp = true;
 	string currentPlayerModel;
+	int freeRoamCount = 0; // use to detect if ghost is free roaming (since there's no method to check mode)
 	
 	GhostCam() {}
 	
@@ -361,6 +362,22 @@ class GhostCam
 			// it's needed to re-create the hat after doing "hat off" + "hat afro"
 		}
 		
+		// detect if player is in roaming mode
+		CBaseEntity@ oberverTarget = plr.GetObserver().GetObserverTarget();
+		if (oberverTarget !is null) {
+			bool freeRoam = oberverTarget.pev.velocity.Length() > 1 && lastPlayerOrigin == plr.pev.origin;
+			if (freeRoam) {
+				freeRoamCount++;
+				if (freeRoamCount >= 4) {
+					// clear target to indicate player is free roaming
+					plr.GetObserver().SetObserverTarget(null);
+					freeRoamCount = 0;
+				}
+			} else {
+				freeRoamCount = 0;
+			}		
+		}
+		
 		Math.MakeVectors( plr.pev.v_angle );
 		Vector playerForward = g_Engine.v_forward;
 		
@@ -456,9 +473,8 @@ class GhostCam
 		
 		cam.pev.colormap = plr.pev.colormap;
 		cam.pev.netname = "Ghost:  " + plr.pev.netname +
-					    "\nCorpse: " + (plr.GetObserver().HasCorpse() ? "Yes" : "No") +
-					    "\nArmor:  " + int(plr.pev.armorvalue) +
-					    "\nScore:    " + int(plr.pev.frags);
+						"\nArmor:  " + int(plr.pev.armorvalue) +
+					    "\nCorpse: " + (plr.GetObserver().HasCorpse() ? "Yes" : "No");;
 		
 		// reverse angle looks better for the swimming animation (leaning into turns)
 		float torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
@@ -496,6 +512,9 @@ class GhostCam
 		}
 		if (g_fun_mode && (plr.pev.button & IN_ATTACK) != 0) {
 			shoot(true);
+		}
+		if (g_fun_mode && (plr.pev.button & IN_ATTACK2) != 0) {
+			shoot(false);
 		}
 		if (g_fun_mode && (plr.pev.button & IN_ATTACK2) != 0) {
 			shoot(false);
