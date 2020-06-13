@@ -23,6 +23,7 @@ class GhostCam
 	bool showCameraHelp = true;
 	bool showCameraCtrlHelp = true;
 	bool showThirdPersonHelp = true;
+	string currentPlayerModel;
 	
 	GhostCam() {}
 	
@@ -37,9 +38,11 @@ class GhostCam
 		
 		ghostId++;
 		
+		currentPlayerModel = getPlayerModel();
+		
 		dictionary keys;
 		keys["origin"] = plr.pev.origin.ToString();
-		keys["model"] = isPlayerModel ? getPlayerModel() : g_camera_model;
+		keys["model"] = isPlayerModel ? currentPlayerModel : g_camera_model;
 		keys["targetname"] = g_ent_prefix + ghostId;
 		keys["noise"] = getPlayerUniqueId(plr); // used by the emotes plugin to find this ent
 		keys["rendermode"] = "1";
@@ -226,8 +229,9 @@ class GhostCam
 		isPlayerModel = g_use_player_models;
 		CBaseEntity@ cam = h_cam;
 		
+		currentPlayerModel = getPlayerModel();
 		g_EntityFuncs.Remove(h_hat);
-		g_EntityFuncs.SetModel(cam, g_use_player_models ? getPlayerModel() : g_camera_model);
+		g_EntityFuncs.SetModel(cam, g_use_player_models ? currentPlayerModel : g_camera_model);
 		createCameraHat();
 	}
 	
@@ -489,6 +493,11 @@ class GhostCam
 		}
 		if (false && (plr.pev.button & IN_ATTACK) != 0) {
 			shoot();
+		}
+		
+		string newModel = getPlayerModel();
+		if (newModel != currentPlayerModel) {
+			updateModel();
 		}
 	}
 }
