@@ -265,7 +265,7 @@ class GhostCam
 		
 	}
 	
-	void shoot() {
+	void shoot(bool medic) {
 		if (!isValid()) {
 			return;
 		}
@@ -275,21 +275,24 @@ class GhostCam
 		Math.MakeVectors( plr.pev.v_angle );
 		Vector lookDir = g_Engine.v_forward;
 		
-		te_projectile(plr.pev.origin, lookDir*512, null, "sprites/saveme.spr", 1);
-		//te_projectile(plr.pev.origin, lookDir*512, null, "sprites/saveme.spr", 1);
-		//te_projectile(plr.pev.origin, lookDir*512, null, "sprites/grenade.spr", 1);
-		
-		g_SoundSystem.PlaySound( plr.edict(), CHAN_STATIC, "fgrunt/medic.wav", 0.1f, 0.1f, plr.entindex(), 90);
-		
-		/*
-		TraceResult tr;
-		g_Utility.TraceLine( plr.pev.origin, plr.pev.origin + lookDir*4096, dont_ignore_monsters, cam.edict(), tr );
-		if (tr.flFraction < 1.0f) {
-			g_Utility.Sparks(tr.vecEndPos);
+		array<PlayerWithState@> playersWithStates = getPlayersWithState();
+		for (uint i = 0; i < playersWithStates.length(); i++)
+		{
+			CBasePlayer@ statePlr = playersWithStates[i].plr;
+			PlayerState@ dstate = playersWithStates[i].state;
 			
+			if (!dstate.shouldSeeGhosts(statePlr)) {
+				continue;
+			}
+			
+			if (medic) {
+				te_projectile(plr.pev.origin + Vector(0,0, -12), lookDir*512, null, "sprites/saveme.spr", 1,  MSG_ONE_UNRELIABLE, statePlr.edict());
+				g_SoundSystem.PlaySound( plr.edict(), CHAN_STATIC, "speech/saveme1.wav", 0.1f, 1.0f, 0, 100, statePlr.entindex());
+			} else {
+				te_projectile(plr.pev.origin + Vector(0,0, -12), lookDir*512, null, "sprites/grenade.spr", 1,  MSG_ONE_UNRELIABLE, statePlr.edict());
+				g_SoundSystem.PlaySound( plr.edict(), CHAN_STATIC, "speech/grenade1.wav", 0.1f, 1.0f, 0, 100, statePlr.entindex());
+			}
 		}
-		te_tracer(plr.pev.origin + Vector(0,0,-8), tr.vecEndPos);
-		*/
 	}
 	
 	bool isValid() {
@@ -445,7 +448,7 @@ class GhostCam
 					g_EngineFuncs.SetView( plr.edict(), plr.edict() );
 				}
 			} else {
-				thirdPersonTarget.pev.origin = plr.pev.origin;
+				//thirdPersonTarget.pev.origin = plr.pev.origin;
 			}
 			
 			lastThirdPersonOrigin = thirdPersonTarget.pev.origin;
@@ -491,8 +494,11 @@ class GhostCam
 			nextThirdPersonToggle = g_Engine.time + 0.5f;
 			toggleThirdperson();
 		}
-		if (false && (plr.pev.button & IN_ATTACK) != 0) {
-			shoot();
+		if (g_fun_mode && (plr.pev.button & IN_ATTACK) != 0) {
+			shoot(true);
+		}
+		if (g_fun_mode && (plr.pev.button & IN_ATTACK2) != 0) {
+			shoot(false);
 		}
 		
 		string newModel = getPlayerModel();
