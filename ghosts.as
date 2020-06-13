@@ -17,6 +17,7 @@ bool debug_mode = true;
 bool g_first_map_load = true;
 bool g_use_player_models = true;
 bool g_force_visible = false;
+bool g_fun_mode = false; // ghost wailing
 
 enum ghost_modes {
 	MODE_HIDE = 0,
@@ -405,6 +406,11 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			g_force_visible = newMode != 0;
 			g_PlayerFuncs.SayText(plr, "Ghost visibility " + (g_force_visible ? "" : "not ") + "forced on\n");
 			update_ghost_visibility();
+		}
+		else if (args[1] == "wail" && args.ArgC() >= 3 && isAdmin) {
+			int newMode = atoi(args[2]);
+			g_fun_mode = newMode != 0;
+			g_PlayerFuncs.SayTextAll(plr, "Ghost wailing " + (g_fun_mode ? "enabled" : "disabled") + "\n");
 		}
 		else if (args[1] == "trace" && isAdmin) {
 			
