@@ -119,6 +119,12 @@ void populatePlayerStates()
 	} while (ent !is null);
 }
 
+string format_float(float f)
+{
+	uint decimal = uint(((f - int(f)) * 10)) % 10;
+	return "" + int(f) + "." + decimal;
+}
+
 float AngleDifference( float angle2, float angle1 ) {
     float diff = int( angle2 - angle1 + 180 ) % 360 - 180;
     return diff < -180 ? diff + 360 : diff;

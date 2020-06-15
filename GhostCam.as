@@ -35,8 +35,6 @@ class GhostCam
 	void init(CBasePlayer@ plr) {
 		h_plr = plr;
 		
-		isPlayerModel = g_use_player_models;
-		
 		ghostId++;
 		
 		currentPlayerModel = getPlayerModel();
@@ -45,7 +43,7 @@ class GhostCam
 		keys["origin"] = plr.pev.origin.ToString();
 		keys["model"] = isPlayerModel ? currentPlayerModel : g_camera_model;
 		keys["targetname"] = g_ent_prefix + ghostId;
-		keys["noise"] = getPlayerUniqueId(plr); // used by the emotes plugin to find this ent
+		keys["noise3"] = getPlayerUniqueId(plr); // set an id on the ent for internal use only
 		keys["rendermode"] = "1";
 		keys["renderamt"] = "" + g_renderamt;
 		keys["spawnflags"] = "1";
@@ -55,6 +53,11 @@ class GhostCam
 		ghostCam.pev.takedamage = 0;
 		ghostCam.pev.angles = plr.pev.v_angle;
 		h_cam = ghostCam;
+
+		isPlayerModel = string(ghostCam.pev.model) != g_camera_model;
+		if (isPlayerModel) {
+			ghostCam.pev.noise = getPlayerUniqueId(plr); // used by the emotes plugin to find this ent
+		}
 
 		dictionary rkeys;
 		rkeys["target"] = string(ghostCam.pev.targetname);
@@ -129,7 +132,7 @@ class GhostCam
 	string getPlayerModel() {
 		CBaseEntity@ plr = h_plr;
 		if (plr is null)
-			return "models/player.mdl";
+			return g_camera_model;
 	
 		KeyValueBuffer@ p_PlayerInfo = g_EngineFuncs.GetInfoKeyBuffer( plr.edict() );
 		string playerModel = p_PlayerInfo.GetValue( "model" ).ToLowercase();
@@ -138,7 +141,7 @@ class GhostCam
 			return "models/player/" + playerModel + "/" + playerModel + ".mdl";
 		}
 		
-		return "models/player.mdl";
+		return g_camera_model;
 	}
 	
 	// custom keyvalues cause crashes, so this just searches for any model attached to the plater which is most likely a hat.
@@ -227,13 +230,16 @@ class GhostCam
 			return;
 		}
 		
-		isPlayerModel = g_use_player_models;
+		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 		CBaseEntity@ cam = h_cam;
 		
 		currentPlayerModel = getPlayerModel();
 		g_EntityFuncs.Remove(h_hat);
 		g_EntityFuncs.SetModel(cam, g_use_player_models ? currentPlayerModel : g_camera_model);
 		createCameraHat();
+		
+		isPlayerModel = string(cam.pev.model) != g_camera_model;
+		cam.pev.noise = isPlayerModel ? getPlayerUniqueId(plr) : "";
 	}
 	
 	void toggleFlashlight() {
@@ -430,42 +436,37 @@ class GhostCam
 		lastOrigin = cam.pev.origin;
 		
 		// update third-person perspective origin/angles
-		if (thirdPersonTarget !is null) {
-			if (isThirdPerson) {
-				
-				Vector plrAngles = plr.pev.v_angle;
-				
-				// invert camera up/down rotation when camera is in front of the player (hard to control)
-				/*
-				if (thirdPersonRot.y > 90 || thirdPersonRot.y < -90) 
-					plrAngles.x *= -1;
-				*/
-						
-				Math.MakeVectors(plrAngles + thirdPersonRot);
-				
-				Vector offset = (g_Engine.v_forward*96 + g_Engine.v_up*-24).Normalize() * thirdPersonZoom;
-				
-				Vector idealPos = modelTargetPos - offset;
-				
-				TraceResult tr;
-				g_Utility.TraceLine( modelTargetPos, idealPos, ignore_monsters, null, tr );
-				
-				if (tr.fInOpen != 0) {
-					g_EngineFuncs.SetView( plr.edict(), thirdPersonTarget.edict() );
+		if ((isThirdPerson || g_stress_test) && thirdPersonTarget !is null) {			
+			Vector plrAngles = plr.pev.v_angle;
+			
+			// invert camera up/down rotation when camera is in front of the player (hard to control)
+			/*
+			if (thirdPersonRot.y > 90 || thirdPersonRot.y < -90) 
+				plrAngles.x *= -1;
+			*/
 					
-					Vector targetAngles = plrAngles + thirdPersonRot;
-					
-					float rot_x_diff = AngleDifference(targetAngles.x, thirdPersonTarget.pev.angles.x);
-					float rot_y_diff = AngleDifference(targetAngles.y, thirdPersonTarget.pev.angles.y);
-					
-					Vector delta2 = tr.vecEndPos - lastThirdPersonOrigin; 
-					thirdPersonTarget.pev.velocity = delta2*0.05f*100.0f;
-					thirdPersonTarget.pev.avelocity = Vector(rot_x_diff*10, rot_y_diff*10, 0);
-				} else {
-					g_EngineFuncs.SetView( plr.edict(), plr.edict() );
-				}
+			Math.MakeVectors(plrAngles + thirdPersonRot);
+			
+			Vector offset = (g_Engine.v_forward*96 + g_Engine.v_up*-24).Normalize() * thirdPersonZoom;
+			
+			Vector idealPos = modelTargetPos - offset;
+			
+			TraceResult tr;
+			g_Utility.TraceLine( modelTargetPos, idealPos, ignore_monsters, null, tr );
+			
+			if (tr.fInOpen != 0) {
+				g_EngineFuncs.SetView( plr.edict(), thirdPersonTarget.edict() );
+				
+				Vector targetAngles = plrAngles + thirdPersonRot;
+				
+				float rot_x_diff = AngleDifference(targetAngles.x, thirdPersonTarget.pev.angles.x);
+				float rot_y_diff = AngleDifference(targetAngles.y, thirdPersonTarget.pev.angles.y);
+				
+				Vector delta2 = tr.vecEndPos - lastThirdPersonOrigin; 
+				thirdPersonTarget.pev.velocity = delta2*0.05f*100.0f;
+				thirdPersonTarget.pev.avelocity = Vector(rot_x_diff*10, rot_y_diff*10, 0);
 			} else {
-				//thirdPersonTarget.pev.origin = plr.pev.origin;
+				g_EngineFuncs.SetView( plr.edict(), plr.edict() );
 			}
 			
 			lastThirdPersonOrigin = thirdPersonTarget.pev.origin;
@@ -473,8 +474,8 @@ class GhostCam
 		
 		cam.pev.colormap = plr.pev.colormap;
 		cam.pev.netname = "Ghost:  " + plr.pev.netname +
-						"\nArmor:  " + int(plr.pev.armorvalue) +
-					    "\nCorpse: " + (plr.GetObserver().HasCorpse() ? "Yes" : "No");;
+					    "\nCorpse: " + (plr.GetObserver().HasCorpse() ? "Yes" : "No") +
+						"\nArmor:  " + int(plr.pev.armorvalue);
 		
 		// reverse angle looks better for the swimming animation (leaning into turns)
 		float torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
@@ -523,6 +524,13 @@ class GhostCam
 		string newModel = getPlayerModel();
 		if (newModel != currentPlayerModel) {
 			updateModel();
+		}
+		
+		if (g_stress_test) {
+			plr.pev.v_angle = plr.pev.v_angle;
+			plr.pev.v_angle.y += Math.RandomLong(0, 10);
+			plr.pev.v_angle.x += Math.RandomLong(0, 10);
+			plr.pev.fixangle = FAM_FORCEVIEWANGLES;
 		}
 	}
 }
