@@ -39,6 +39,7 @@ class PlayerState
 	int visbilityMode = cvar_default_mode.GetInt();
 	int viewingMonsterInfo = 0;
 	float nextGhostCollect = 0;
+	bool changedMode = false;
 	
 	bool shouldSeeGhosts(CBasePlayer@ plr) {
 		if (visbilityMode == MODE_SHOW || g_force_visible)
@@ -79,7 +80,7 @@ void PluginInit()
 	g_Hooks.RegisterHook( Hooks::Player::PlayerUse, @PlayerUse );
 	
 	@cvar_use_player_models = CCVar("player_models", 1, "show player models instead of cameras", ConCommandFlag::AdminOnly);
-	@cvar_default_mode = CCVar("default_mode", MODE_SHOW, "ghost visibility mode", ConCommandFlag::AdminOnly);
+	@cvar_default_mode = CCVar("default_mode", MODE_HIDE_IF_BLOCKING, "ghost visibility mode", ConCommandFlag::AdminOnly);
 	
 	delete_ghosts();
 	
@@ -110,7 +111,17 @@ void MapActivate()
 	if (g_first_map_load) {
 		g_first_map_load = false;
 		g_use_player_models = cvar_use_player_models.GetInt() != 0;
-		// TODO: Reset player setitngs to server setting
+		
+		// Reset player view mode to use server setting, unless mode was changed before the level changed
+		array<string>@ stateKeys = g_player_states.getKeys();
+		for (uint i = 0; i < stateKeys.length(); i++)
+		{
+			PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
+			if (!state.changedMode) {
+				state.visbilityMode = cvar_default_mode.GetInt();
+			}
+			
+		}
 	}
 	
 	g_player_model_precache.clear();
@@ -409,7 +420,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	if (args.ArgC() >= 2)
 	{
 		if (args[1] == "version") {
-			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP3\n");
+			g_PlayerFuncs.SayText(plr, "ghosts plugin v2\n");
 		}
 		else if (args[1] == "renderamt" && args.ArgC() >= 3 && isAdmin) {
 			g_renderamt = atof(args[2]);
@@ -499,6 +510,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 				g_PlayerFuncs.SayText(plr, "Showing ghosts\n");
 			}
 			
+			state.changedMode = true;
 			update_ghost_visibility();
 		}
 
