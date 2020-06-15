@@ -26,6 +26,9 @@ class GhostCam
 	string currentPlayerModel;
 	int freeRoamCount = 0; // use to detect if ghost is free roaming (since there's no method to check mode)
 	
+	float collectTimeout = 0;
+	EHandle collectTarget;
+	
 	GhostCam() {}
 	
 	GhostCam(CBasePlayer@ plr) {
@@ -41,7 +44,7 @@ class GhostCam
 		
 		dictionary keys;
 		keys["origin"] = plr.pev.origin.ToString();
-		keys["model"] = isPlayerModel ? currentPlayerModel : g_camera_model;
+		keys["model"] = currentPlayerModel;
 		keys["targetname"] = g_ent_prefix + ghostId;
 		keys["noise3"] = getPlayerUniqueId(plr); // set an id on the ent for internal use only
 		keys["rendermode"] = "1";
@@ -78,7 +81,7 @@ class GhostCam
 		createCameraHat();
 		
 		if (showThirdPersonHelp) {
-			g_PlayerFuncs.PrintKeyBindingString(plr, "+alt1 to toggle third-person\n+USE to spray");
+			PrintKeyBindingStringLong(plr, "+alt1 to toggle third-person\n+USE to spray");
 			showThirdPersonHelp = false;
 		}
 		
@@ -102,7 +105,7 @@ class GhostCam
 			hideGhostCam.Use(plr, plr, USE_OFF);
 			
 			if (showCameraHelp) {
-				g_PlayerFuncs.PrintKeyBindingString(plr, "Hold +DUCK to adjust camera");
+				PrintKeyBindingStringLong(plr, "Hold +DUCK to adjust camera");
 				showCameraHelp = false;
 			}
 			
@@ -130,8 +133,9 @@ class GhostCam
 	}
 	
 	string getPlayerModel() {
-		CBaseEntity@ plr = h_plr;
-		if (plr is null)
+		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+		
+		if (plr is null or !getPlayerState(plr).enablePlayerModel)
 			return g_camera_model;
 	
 		KeyValueBuffer@ p_PlayerInfo = g_EngineFuncs.GetInfoKeyBuffer( plr.edict() );
@@ -384,6 +388,14 @@ class GhostCam
 			}		
 		}
 		
+		if (collectTimeout > g_Engine.time ) {
+			CBasePlayer@ target = cast<CBasePlayer@>(collectTarget.GetEntity());
+			if (target !is null) {
+				plr.GetObserver().SetObserverTarget(target);
+				plr.GetObserver().SetMode(OBS_CHASE_FREE);
+			}
+		}
+		
 		Math.MakeVectors( plr.pev.v_angle );
 		Vector playerForward = g_Engine.v_forward;
 		
@@ -394,7 +406,7 @@ class GhostCam
 		}
 		if (isThirdPerson && (plr.pev.button & IN_DUCK) != 0) {
 			if (showCameraCtrlHelp) {
-				g_PlayerFuncs.PrintKeyBindingString(plr, "+FORWARD and +BACK to zoom\n+RELOAD to reset");
+				PrintKeyBindingStringLong(plr, "+FORWARD and +BACK to zoom\n+RELOAD to reset");
 				showCameraCtrlHelp = false;
 			}
 			thirdPersonRot = thirdPersonRot + (plr.pev.v_angle - lastPlayerAngles);
