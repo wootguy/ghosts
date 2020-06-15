@@ -1,7 +1,3 @@
-float g_renderamt = 96;
-float g_min_zoom = 0;
-float g_max_zoom = 1024;
-float g_default_zoom = 96;
 
 class GhostCam
 {
@@ -54,6 +50,7 @@ class GhostCam
 		ghostCam.pev.solid = SOLID_NOT;
 		ghostCam.pev.movetype = MOVETYPE_NOCLIP;
 		ghostCam.pev.takedamage = 0;
+		ghostCam.pev.sequence = 0;
 		ghostCam.pev.angles = plr.pev.v_angle;
 		h_cam = ghostCam;
 
@@ -244,6 +241,9 @@ class GhostCam
 		
 		isPlayerModel = string(cam.pev.model) != g_camera_model;
 		cam.pev.noise = isPlayerModel ? getPlayerUniqueId(plr) : "";
+		if (!isPlayerModel) {
+			cam.pev.sequence = 0;
+		}
 	}
 	
 	void toggleFlashlight() {
