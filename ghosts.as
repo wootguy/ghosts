@@ -20,6 +20,7 @@ bool g_force_visible = false;
 bool g_fun_mode = false; // ghost wailing
 bool g_stress_test = false;
 float g_ghost_collect_delay = 0.5f; // protect against double-using
+float g_collect_timeout = 3.0f; // ghost is forced to follow player for this long (just long enough to realize you got caught)
 
 enum ghost_modes {
 	MODE_HIDE = 0,
@@ -40,6 +41,7 @@ class PlayerState
 	int viewingMonsterInfo = 0;
 	float nextGhostCollect = 0;
 	bool changedMode = false;
+	bool enablePlayerModel = true;
 	
 	bool shouldSeeGhosts(CBasePlayer@ plr) {
 		if (visbilityMode == MODE_SHOW || g_force_visible)
@@ -267,7 +269,7 @@ void ghostLoop() {
 					
 					string info = "" + phit.pev.netname;
 					if (isObserver || true) {
-						info += "\nMode:    " + getPlayerState(plr).visbilityMode;
+						info += "\nMode:   " + getPlayerState(plr).visbilityMode;
 					}
 					g_PlayerFuncs.HudMessage(plr, params, info);
 				}
@@ -422,17 +424,41 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		if (args[1] == "version") {
 			g_PlayerFuncs.SayText(plr, "ghosts plugin v2\n");
 		}
+		else if (args[1] == "model" && args.ArgC() >= 3) {
+			int newMode = atoi(args[2]);
+			state.enablePlayerModel = newMode != 0;
+			
+			if (!g_use_player_models) {
+				g_PlayerFuncs.SayText(plr, "Can't change model mode. The server is forcing camera models.\n");
+			}
+			else {
+				if (state.enablePlayerModel) {
+					string text = "Your ghost model is now your player model";
+					
+					KeyValueBuffer@ p_PlayerInfo = g_EngineFuncs.GetInfoKeyBuffer( plr.edict() );
+					string playerModel = p_PlayerInfo.GetValue( "model" ).ToLowercase();
+					bool modelPrecached = g_player_model_precache.exists(playerModel);
+					
+					text += modelPrecached ? "" : " (not precached yet)";
+					g_PlayerFuncs.SayText(plr, text + "\n");
+				} else {
+					g_PlayerFuncs.SayText(plr, "Your ghost model is now a camera.\n");
+				}
+				
+				update_ghost_models();
+			}
+		}
 		else if (args[1] == "renderamt" && args.ArgC() >= 3 && isAdmin) {
 			g_renderamt = atof(args[2]);
 			if (g_renderamt == -1)
 				g_renderamt = 96; // default
-			g_PlayerFuncs.SayText(plr, "Ghost renderamt is " + g_renderamt + "\n");
+			g_PlayerFuncs.SayTextAll(plr, "Ghost transparency is now " + g_renderamt + " / 255\n");
 			reload_ghosts();
 		}
 		else if (args[1] == "force" && args.ArgC() >= 3 && isAdmin) {
 			int newMode = atoi(args[2]);
 			g_force_visible = newMode != 0;
-			g_PlayerFuncs.SayText(plr, "Ghost visibility " + (g_force_visible ? "" : "not ") + "forced on\n");
+			g_PlayerFuncs.SayTextAll(plr, "Ghost visibility " + (g_force_visible ? "" : "not ") + "forced on\n");
 			update_ghost_visibility();
 		}
 		else if (args[1] == "wail" && args.ArgC() >= 3 && isAdmin) {
@@ -454,7 +480,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		else if (args[1] == "reload" && isAdmin) {
 			reload_ghosts();
-			g_PlayerFuncs.SayText(plr, "Reloaded ghosts\n");
+			g_PlayerFuncs.SayTextAll(plr, "Reloaded ghosts\n");
 		}
 		else if (args[1] == "reload_hard" && isAdmin) {
 			int deleteCount = g_player_states.getSize();
@@ -462,7 +488,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			populatePlayerStates();
 			reload_ghosts();
 			
-			g_PlayerFuncs.SayText(plr, "Reloaded ghosts and deleted " + deleteCount + " player states\n");
+			g_PlayerFuncs.SayTextAll(plr, "Reloaded ghosts and deleted " + deleteCount + " player states\n");
 			return;
 		}
 		else if (args[1] == "debug" && args.ArgC() >= 3 && isAdmin) {			
@@ -539,11 +565,8 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 						statePlr.GetObserver().SetMode(g_stress_test ? OBS_CHASE_LOCKED : OBS_ROAMING);
 					}
 				}
-				
-				
 			}
 		}
-		
 	} else {
 		KeyValueBuffer@ p_PlayerInfo = g_EngineFuncs.GetInfoKeyBuffer( plr.edict() );
 		string playerModel = p_PlayerInfo.GetValue( "model" ).ToLowercase();
@@ -555,19 +578,30 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 		}
 		
 		if (inConsole) {
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 0" to hide ghosts.\n');
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 1" to show ghosts.\n');
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 2" to show ghosts that aren\'t blocking your view.\n');
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts 3" to show ghosts only while dead.\n');
-			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Your current mode is ' + state.visbilityMode + '. ' + precachedString + '\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '----------------------------------Ghost Commands----------------------------------\n\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts <0,1,2,3>" to change ghost visibility mode.\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    0 = never show ghosts.\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    1 = always show ghosts.\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    2 = show ghosts that aren\'t blocking your view.\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    3 = show ghosts only while dead.\n\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts model <0,1>" to change ghost model mode.\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    0 = always use camera model.\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '    1 = use player model, if available (the server must have it installed).\n\n');
+			if (isAdmin) {
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts wail <0,1>" to toggle ghost wailing (click to shoot sprites).\n');
+				g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, 'Type ".ghosts players <0,1>" to toggle ghost player models.\n');
+			}
+			
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\nPress your use key on a ghost to collect/drop it. Collecting a ghost forces it follow you for a short time.\n');
+			
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\nYour current mode is ' + state.visbilityMode + '. ' + precachedString + '\n');
+			g_PlayerFuncs.ClientPrint(plr, HUD_PRINTCONSOLE, '\n----------------------------------------------------------------------------------\n');
+			
 		} else {
-			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 0" to hide ghosts.\n');
-			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 1" to show ghosts.\n');
-			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 2" to show ghosts that aren\'t blocking your view.\n');
-			g_PlayerFuncs.SayText(plr, 'Say ".ghosts 3" to show ghosts only while dead.\n');
-			g_PlayerFuncs.SayText(plr, 'Your current mode is ' + state.visbilityMode + '. ' + precachedString + '\n');
+			g_PlayerFuncs.SayText(plr, 'Say ".ghosts <0,1,2,3>" to change ghost visibility mode.\n');
+			g_PlayerFuncs.SayText(plr, 'Say ".ghosts model <0,1>" to change ghost model mode.\n');
+			g_PlayerFuncs.SayText(plr, 'Type ".ghosts" in console for more info\n');
 		}
-		
 	}
 }
 
@@ -651,11 +685,16 @@ HookReturnCode PlayerUse( CBasePlayer@ pPlayer, uint& out uiFlags )
 				if (getPlayerUniqueId(p) == ghostId) {
 					if (state.nextGhostCollect < g_Engine.time) {
 						CBaseEntity@ observerTarget = p.GetObserver().GetObserverTarget();
+						PlayerState@ targetState = getPlayerState(p);
+						
 						if (observerTarget !is null && observerTarget.entindex() == pPlayer.entindex()) {
 							p.GetObserver().SetObserverTarget(null);
 							p.GetObserver().SetMode(OBS_ROAMING);
 							g_PlayerFuncs.SayText(pPlayer, "Dropped " + p.pev.netname + "\n");
 							g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " dropped you\n");
+							
+							targetState.cam.collectTarget = null;
+							targetState.cam.collectTimeout = 0;
 						} else {
 							p.GetObserver().SetObserverTarget(pPlayer);
 							p.GetObserver().SetMode(OBS_CHASE_FREE);
@@ -663,7 +702,10 @@ HookReturnCode PlayerUse( CBasePlayer@ pPlayer, uint& out uiFlags )
 							p.pev.angles.y = pPlayer.pev.v_angle.y;
 							p.pev.fixangle = FAM_FORCEVIEWANGLES;
 							g_PlayerFuncs.SayText(pPlayer, "Collected " + p.pev.netname + "\n");
-							g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " collected you\n");
+							g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " collected you.\n");
+							
+							targetState.cam.collectTarget = EHandle(pPlayer);
+							targetState.cam.collectTimeout = g_Engine.time + g_collect_timeout;
 						}
 						
 						state.nextGhostCollect = g_Engine.time + g_ghost_collect_delay;
@@ -686,6 +728,7 @@ HookReturnCode PlayerUse( CBasePlayer@ pPlayer, uint& out uiFlags )
 }
 
 CClientCommand _ghost("ghosts", "Ghost commands", @consoleCmd );
+CClientCommand _g("g", "Ghost commands", @consoleCmd );
 
 void consoleCmd( const CCommand@ args ) {
 	CBasePlayer@ plr = g_ConCommandSystem.GetCurrentPlayer();
