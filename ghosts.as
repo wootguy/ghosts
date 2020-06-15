@@ -22,6 +22,11 @@ bool g_stress_test = false;
 float g_ghost_collect_delay = 0.5f; // protect against double-using
 float g_collect_timeout = 3.0f; // ghost is forced to follow player for this long (just long enough to realize you got caught)
 
+float g_renderamt = 128; // must be at least 128 or textures with transparency are invisible (gf_ump45)
+float g_min_zoom = 0;
+float g_max_zoom = 1024;
+float g_default_zoom = 96;
+
 enum ghost_modes {
 	MODE_HIDE = 0,
 	MODE_SHOW,
