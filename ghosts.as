@@ -18,6 +18,8 @@ bool g_first_map_load = true;
 bool g_use_player_models = true;
 bool g_force_visible = false;
 bool g_fun_mode = false; // ghost wailing
+bool g_stress_test = false;
+float g_ghost_collect_delay = 0.5f; // protect against double-using
 
 enum ghost_modes {
 	MODE_HIDE = 0,
@@ -36,6 +38,7 @@ class PlayerState
 	GhostCam cam;
 	int visbilityMode = cvar_default_mode.GetInt();
 	int viewingMonsterInfo = 0;
+	float nextGhostCollect = 0;
 	
 	bool shouldSeeGhosts(CBasePlayer@ plr) {
 		if (visbilityMode == MODE_SHOW || g_force_visible)
@@ -82,7 +85,7 @@ void PluginInit()
 	
 	populatePlayerStates();
 	
-	g_Scheduler.SetInterval("ghostLoop", 0.05, -1);
+	g_Scheduler.SetInterval("ghostLoop", 0.05f, -1);
 	
 	create_ghosts();
 }
@@ -98,6 +101,7 @@ void MapInit()
 	{
 		PlayerState@ state = cast<PlayerState@>( g_player_states[stateKeys[i]] );
 		state.cam = GhostCam();
+		state.nextGhostCollect = 0;
 	}
 }
 
@@ -106,6 +110,7 @@ void MapActivate()
 	if (g_first_map_load) {
 		g_first_map_load = false;
 		g_use_player_models = cvar_use_player_models.GetInt() != 0;
+		// TODO: Reset player setitngs to server setting
 	}
 	
 	g_player_model_precache.clear();
@@ -510,7 +515,20 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			}
 			if (args[1] == "d") {
 				
-				g_EngineFuncs.SetView( plr.edict(), plr.edict() );
+				g_stress_test = !g_stress_test;
+				
+				array<PlayerWithState@> playersWithStates = getPlayersWithState();
+				for (uint i = 0; i < playersWithStates.length(); i++)
+				{
+					CBasePlayer@ statePlr = playersWithStates[i].plr;
+					
+					if (statePlr.GetObserver().IsObserver()) {
+						statePlr.GetObserver().SetObserverTarget(g_stress_test ? plr : null);
+						statePlr.GetObserver().SetMode(g_stress_test ? OBS_CHASE_LOCKED : OBS_ROAMING);
+					}
+				}
+				
+				
 			}
 		}
 		
@@ -606,7 +624,7 @@ HookReturnCode PlayerUse( CBasePlayer@ pPlayer, uint& out uiFlags )
 	{
 		// prevent using cyclers since that messes up their animations
 		uiFlags |= PlrHook_SkipUse;
-		string ghostId = pObject.pev.noise;
+		string ghostId = pObject.pev.noise3;
 		
 		bool collectedGhostie = false;
 		
@@ -615,24 +633,33 @@ HookReturnCode PlayerUse( CBasePlayer@ pPlayer, uint& out uiFlags )
 			for ( int i = 1; i <= g_Engine.maxClients; i++ )
 			{
 				CBasePlayer@ p = g_PlayerFuncs.FindPlayerByIndex(i);
-				if (p is null or !p.IsConnected())
+				if (p is null or !p.IsConnected()) {
 					continue;
+				}
 				if (getPlayerUniqueId(p) == ghostId) {
-					CBaseEntity@ observerTarget = p.GetObserver().GetObserverTarget();
-					if (observerTarget !is null && observerTarget.entindex() == pPlayer.entindex()) {
-						p.GetObserver().SetObserverTarget(null);
-						p.GetObserver().SetMode(OBS_ROAMING);
-						g_PlayerFuncs.SayText(pPlayer, "Dropped " + p.pev.netname + "\n");
-						g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " dropped you\n");
+					if (state.nextGhostCollect < g_Engine.time) {
+						CBaseEntity@ observerTarget = p.GetObserver().GetObserverTarget();
+						if (observerTarget !is null && observerTarget.entindex() == pPlayer.entindex()) {
+							p.GetObserver().SetObserverTarget(null);
+							p.GetObserver().SetMode(OBS_ROAMING);
+							g_PlayerFuncs.SayText(pPlayer, "Dropped " + p.pev.netname + "\n");
+							g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " dropped you\n");
+						} else {
+							p.GetObserver().SetObserverTarget(pPlayer);
+							p.GetObserver().SetMode(OBS_CHASE_FREE);
+							p.pev.angles.x = -15;
+							p.pev.angles.y = pPlayer.pev.v_angle.y;
+							p.pev.fixangle = FAM_FORCEVIEWANGLES;
+							g_PlayerFuncs.SayText(pPlayer, "Collected " + p.pev.netname + "\n");
+							g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " collected you\n");
+						}
+						
+						state.nextGhostCollect = g_Engine.time + g_ghost_collect_delay;
 					} else {
-						p.GetObserver().SetObserverTarget(pPlayer);
-						p.GetObserver().SetMode(OBS_CHASE_FREE);
-						p.pev.angles.x = -15;
-						p.pev.angles.y = pPlayer.pev.v_angle.y;
-						p.pev.fixangle = FAM_FORCEVIEWANGLES;
-						g_PlayerFuncs.SayText(pPlayer, "Collected " + p.pev.netname + "\n");
-						g_PlayerFuncs.SayText(p, "" + pPlayer.pev.netname + " collected you\n");
+						float waitTime = state.nextGhostCollect - g_Engine.time;
+						//g_PlayerFuncs.PrintKeyBindingString(pPlayer, "Wait " + format_float(waitTime) + " seconds\n");
 					}
+					
 					collectedGhostie = true;
 					break;
 				}
