@@ -254,18 +254,23 @@ void ghostLoop() {
 				params.y = 0.57;
 				params.channel = 3;
 				
-				if (isObserver && phit.IsPlayer()) {
-					CBasePlayer@ hitPlr = cast<CBasePlayer@>(phit);
+				if (isObserver) {
 					params.r1 = 6;
 					params.g1 = 170;
 					params.b1 = 94;
 					
-					string info = "Player:  " + phit.pev.netname +
-								   "\nHealth:  " + int(phit.pev.health) +
-								   "\nArmor:  " + int(plr.pev.armorvalue) +
-								   "\nMode:   " + int(getPlayerState(hitPlr).visbilityMode);
-					
-					g_PlayerFuncs.HudMessage(plr, params, info);
+					CBasePlayer@ hitPlr = cast<CBasePlayer@>(phit);
+					if (hitPlr !is null && hitPlr.IsConnected()) {
+						PlayerState@ hitState = getPlayerState(hitPlr);
+						if (hitState !is null) {
+							string info = "Player:  " + hitPlr.pev.netname +
+										   "\nHealth:  " + int(hitPlr.pev.health) +
+										   "\nArmor:  " + int(hitPlr.pev.armorvalue) +
+										   "\nMode:   " + int(hitState.visbilityMode);
+							
+							g_PlayerFuncs.HudMessage(plr, params, info);
+						}
+					}
 				} else if (state.viewingMonsterInfo == 0 && string(phit.pev.targetname).Find(g_ent_prefix) == 0) {
 					// show ghost info to living players, only if a monster is not in sight
 					params.r1 = 163;

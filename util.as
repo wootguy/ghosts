@@ -61,15 +61,17 @@ void debug_plr(CBasePlayer@ plr, EHandle h_plr) {
 									", " + statePlr.entindex() : "null"));
 }
 
-void PrintKeyBindingString(CBasePlayer@ plr, string text) {
-	g_PlayerFuncs.PrintKeyBindingString(plr, text);
+void PrintKeyBindingString(EHandle h_plr, string text) {
+	CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
+	if (plr !is null && plr.IsConnected())
+		g_PlayerFuncs.PrintKeyBindingString(plr, text);
 }
 
 // display the text for a second longer
 void PrintKeyBindingStringLong(CBasePlayer@ plr, string text)
 {
-	PrintKeyBindingString(plr, text);
-	g_Scheduler.SetTimeout("PrintKeyBindingString", 1, @plr, text);
+	PrintKeyBindingString(EHandle(plr), text);
+	g_Scheduler.SetTimeout("PrintKeyBindingString", 1, EHandle(plr), text);
 }
 
 string getPlayerUniqueId(CBasePlayer@ plr)
