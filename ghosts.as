@@ -254,12 +254,12 @@ void ghostLoop() {
 				params.y = 0.57;
 				params.channel = 3;
 				
-				if (isObserver) {
+				CBasePlayer@ hitPlr = cast<CBasePlayer@>(phit);
+				if (isObserver && phit.IsPlayer()) {
 					params.r1 = 6;
 					params.g1 = 170;
 					params.b1 = 94;
 					
-					CBasePlayer@ hitPlr = cast<CBasePlayer@>(phit);
 					if (hitPlr !is null && hitPlr.IsConnected()) {
 						PlayerState@ hitState = getPlayerState(hitPlr);
 						if (hitState !is null) {
@@ -277,11 +277,7 @@ void ghostLoop() {
 					params.g1 = 155;
 					params.b1 = 255;
 					
-					string info = "" + phit.pev.netname;
-					if (isObserver || true) {
-						info += "\nMode:   " + getPlayerState(plr).visbilityMode;
-					}
-					g_PlayerFuncs.HudMessage(plr, params, info);
+					g_PlayerFuncs.HudMessage(plr, params, phit.pev.netname);
 				}
 				
 				if (phit.IsMonster() && phit.IsAlive()) {
@@ -432,7 +428,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	if (args.ArgC() >= 2)
 	{
 		if (args[1] == "version") {
-			g_PlayerFuncs.SayText(plr, "ghosts plugin v2\n");
+			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP\n");
 		}
 		else if (args[1] == "model" && args.ArgC() >= 3) {
 			int newMode = atoi(args[2]);

@@ -487,7 +487,8 @@ class GhostCam
 		cam.pev.colormap = plr.pev.colormap;
 		cam.pev.netname = "Ghost:  " + plr.pev.netname +
 					    "\nCorpse: " + (plr.GetObserver().HasCorpse() ? "Yes" : "No") +
-						"\nArmor:  " + int(plr.pev.armorvalue);
+						"\nArmor:  " + int(plr.pev.armorvalue) +
+						"\nMode:   " + getPlayerState(plr).visbilityMode;
 		
 		// reverse angle looks better for the swimming animation (leaning into turns)
 		float torsoAngle = AngleDifference(cam.pev.angles.y, plr.pev.v_angle.y) * (30.0f / 90.0f);
