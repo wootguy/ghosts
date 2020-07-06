@@ -1,6 +1,8 @@
 # ghosts
 Adds visible ghost models for observers. Type ".ghosts" in chat or console for help.
 
+![ghosts](https://user-images.githubusercontent.com/12087544/86665159-3d2b2180-bfa4-11ea-8c9e-6c87c6b23916.gif)
+
 # CVars
 ```
 as_command ghosts.player_models 1
