@@ -77,7 +77,7 @@ class PlayerWithState {
 void PluginInit()
 {	
 	g_Module.ScriptInfo.SetAuthor( "w00tguy" );
-	g_Module.ScriptInfo.SetContactInfo( "something something github" );
+	g_Module.ScriptInfo.SetContactInfo( "https://github.com/wootguy/ghosts" );
 	
 	g_Hooks.RegisterHook( Hooks::Player::ClientSay, @ClientSay );
 	g_Hooks.RegisterHook( Hooks::Player::PlayerEnteredObserver, @PlayerEnteredObserver );
@@ -428,7 +428,7 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 	if (args.ArgC() >= 2)
 	{
 		if (args[1] == "version") {
-			g_PlayerFuncs.SayText(plr, "ghosts plugin v2 WIP\n");
+			g_PlayerFuncs.SayText(plr, "ghosts plugin v2\n");
 		}
 		else if (args[1] == "model" && args.ArgC() >= 3) {
 			int newMode = atoi(args[2]);
