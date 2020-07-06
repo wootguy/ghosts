@@ -10,7 +10,8 @@ as_command ghosts.default_mode 2
 - `ghosts.default_mode` sets the default visibility mode for ghosts. Players can override this for themselves.
   - 0 = hide ghosts
   - 1 = show ghosts
-  - 2 = show ghosts only while dead
+  - 2 = show ghosts that don't block your view
+  - 3 = show ghosts only while dead
 
 # Installation
 
