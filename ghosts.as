@@ -1,3 +1,9 @@
+// TODO:
+// ghosts reduce update rate + setting i guess
+// ghosts loops on its own
+// ghosts emotes not working right (speed ignored sometimes)
+
+
 #include "GhostCam"
 #include "util"
 
@@ -251,26 +257,55 @@ void ghostLoop() {
 				params.holdTime = 1.5f;
 				
 				params.x = 0.04;
-				params.y = 0.57;
 				params.channel = 3;
 				
-				CBasePlayer@ hitPlr = cast<CBasePlayer@>(phit);
-				if (isObserver && phit.IsPlayer()) {
-					params.r1 = 6;
-					params.g1 = 170;
-					params.b1 = 94;
-					
-					if (hitPlr !is null && hitPlr.IsConnected()) {
-						PlayerState@ hitState = getPlayerState(hitPlr);
-						if (hitState !is null) {
-							string info = "Player:  " + hitPlr.pev.netname +
-										   "\nHealth:  " + int(hitPlr.pev.health) +
-										   "\nArmor:  " + int(hitPlr.pev.armorvalue) +
-										   "\nMode:   " + int(hitState.visbilityMode);
+				
+				if (isObserver) {
+					if (phit.IsPlayer()) {
+						params.y = 0.57;
+						CBasePlayer@ hitPlr = cast<CBasePlayer@>(phit);
+						
+						params.r1 = 6;
+						params.g1 = 170;
+						params.b1 = 94;
+						
+						if (hitPlr !is null && hitPlr.IsConnected()) {
+							PlayerState@ hitState = getPlayerState(hitPlr);
+							if (hitState !is null) {
+								string info = "Player:  " + hitPlr.pev.netname +
+											   "\nHealth:  " + int(hitPlr.pev.health) +
+											   "\nArmor:  " + int(hitPlr.pev.armorvalue) +
+											   "\nMode:   " + int(hitState.visbilityMode);
+								
+								g_PlayerFuncs.HudMessage(plr, params, info);
+							}
+						}
+					} else if (phit.IsMonster()) {
+						CBaseMonster@ hitMon = cast<CBaseMonster@>(phit);
+						int rel = plr.IRelationship(hitMon);
+						bool isFriendly = rel == R_AL or rel == R_NO;
+						
+						params.y = 0.582;
+						if (isFriendly) {
+							params.r1 = 6;
+							params.g1 = 170;
+							params.b1 = 94;
+						} else {
+							params.r1 = 255;
+							params.g1 = 0;
+							params.b1 = 0;
+						}
+						string relStr = isFriendly ? "Friend:  " : "Enemy:  ";
+						
+						if (hitMon !is null && hitMon.IsAlive()) {
+							string info = relStr + hitMon.m_FormattedName +
+										   "\nHealth:  " + int(hitMon.pev.health) +
+										   "\nFrags:    " + int(hitMon.pev.frags);
 							
 							g_PlayerFuncs.HudMessage(plr, params, info);
 						}
 					}
+					
 				} else if (state.viewingMonsterInfo == 0 && string(phit.pev.targetname).Find(g_ent_prefix) == 0) {
 					// show ghost info to living players, only if a monster is not in sight
 					params.r1 = 163;
