@@ -18,7 +18,7 @@ dictionary g_player_model_precache;
 CCVar@ cvar_use_player_models;
 CCVar@ cvar_default_mode;
 
-bool debug_mode = true;
+bool debug_mode = false;
 
 bool g_first_map_load = true;
 bool g_use_player_models = true;
