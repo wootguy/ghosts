@@ -260,7 +260,7 @@ void ghostLoop() {
 				params.channel = 3;
 				
 				
-				if (isObserver) {
+				if (isObserver && ((phit.IsMonster() && phit.IsAlive()) || phit.IsPlayer())) {
 					if (phit.IsPlayer()) {
 						params.y = 0.57;
 						CBasePlayer@ hitPlr = cast<CBasePlayer@>(phit);
@@ -292,8 +292,8 @@ void ghostLoop() {
 							params.b1 = 94;
 						} else {
 							params.r1 = 255;
-							params.g1 = 0;
-							params.b1 = 0;
+							params.g1 = 16;
+							params.b1 = 16;
 						}
 						string relStr = isFriendly ? "Friend:  " : "Enemy:  ";
 						
