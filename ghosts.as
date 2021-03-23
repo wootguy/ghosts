@@ -338,7 +338,14 @@ void ghostLoop() {
 
 HookReturnCode PlayerEnteredObserver( CBasePlayer@ plr ) {
 	PlayerState@ state = getPlayerState(plr);
+	
+	if (state.cam !is null) {
+		// spamming an observer bind can somehow call EnteredObserver twice before LeftObserver is called :s
+		state.cam.remove();
+	}
+	
 	state.cam.init(plr);
+	
 	update_ghost_visibility();
 	return HOOK_CONTINUE;
 }
