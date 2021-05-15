@@ -1,11 +1,23 @@
 
+class GhostHat
+{
+	EHandle hat; // hat attached to the ghost entity
+	EHandle watchHat; // hat created by the hats plugin
+	
+	GhostHat() {}
+	
+	GhostHat(EHandle hat, EHandle watchHat) {
+		this.hat = hat;
+		this.watchHat = watchHat;
+	}
+}
+
 class GhostCam
 {
 	EHandle h_plr;
 	EHandle h_cam;
 	EHandle h_render_off; // also used as a thirdperson view target
-	EHandle h_hat;
-	EHandle h_watch_hat; // hat entity created by the hats plugin
+	array<GhostHat> ghostHats;
 	bool initialized = false;
 	bool isPlayerModel;
 	bool isThirdPerson = false;
@@ -122,8 +134,7 @@ class GhostCam
 		
 		conPrintln(plr, "    cam ents: " + (h_cam.IsValid() ? string(h_cam.GetEntity().pev.targetname) : "null") +
 				", " + (h_render_off.IsValid() ? string(h_render_off.GetEntity().pev.targetname) : "null") +
-				", " + (h_hat.IsValid() ? string(h_hat.GetEntity().pev.targetname) : "null") + 
-				", " + (h_watch_hat.IsValid() ? "valid" : "null"));
+				", " + (ghostHats.size()));
 		
 		conPrintln(plr, "    initialized: " + (initialized ? "true" : "false") + 
 						", isPlayerModel: " + (isPlayerModel ? "true" : "false"));
@@ -145,11 +156,13 @@ class GhostCam
 		return g_camera_model;
 	}
 	
-	// custom keyvalues cause crashes, so this just searches for any model attached to the plater which is most likely a hat.
-	CBaseEntity@ getPlayerHat() {
+	// custom keyvalues cause crashes, so this just searches for any models attached to the plater which are most likely hats
+	array<CBaseEntity@> getPlayerHats() {
+		array<CBaseEntity@> hats;
+		
 		if (!h_plr.IsValid())
-			return null;
-			
+			return hats;
+		
 		CBaseEntity@ plr = h_plr;
 	
 		CBaseEntity@ ent = null;
@@ -158,44 +171,47 @@ class GhostCam
 			if (ent !is null)
 			{
 				if (@ent.pev.aiment == @plr.edict() && string(ent.pev.model).Find("hat") != String::INVALID_INDEX) {
-					return ent;
+					hats.insertLast(ent);
 				}
 			}
 		} while (ent !is null);
 		
-		return null;
+		return hats;
 	}
 	
 	void createCameraHat() {
-		g_EntityFuncs.Remove(h_hat);
-		h_watch_hat = null;
+		for (uint i = 0; i < ghostHats.size(); i++) {
+			g_EntityFuncs.Remove(ghostHats[i].hat);
+		}
+		ghostHats.resize(0);
 		
-		CBaseEntity@ playerHat = getPlayerHat();
-		if (playerHat is null) {
+		array<CBaseEntity@> playerHats = getPlayerHats();
+		if (playerHats.size() == 0) {
 			return;
 		}
 	
-		CBaseEntity@ cam = h_cam;
-	
-		dictionary keys;
-		keys["origin"] = cam.pev.origin.ToString();
-		keys["model"] = "" + playerHat.pev.model;
-		keys["targetname"] = string(cam.pev.targetname);
-		keys["rendermode"] = "1";
-		keys["renderamt"] = "" + g_renderamt;
-		keys["spawnflags"] = "1";
-		CBaseEntity@ camHat = g_EntityFuncs.CreateEntity("env_sprite", keys, true);	
+		for (uint i = 0; i < playerHats.size(); i++) {
+			CBaseEntity@ cam = h_cam;
+		
+			dictionary keys;
+			keys["origin"] = cam.pev.origin.ToString();
+			keys["model"] = "" + playerHats[i].pev.model;
+			keys["targetname"] = string(cam.pev.targetname);
+			keys["rendermode"] = "1";
+			keys["renderamt"] = "" + g_renderamt;
+			keys["spawnflags"] = "1";
+			CBaseEntity@ camHat = g_EntityFuncs.CreateEntity("env_sprite", keys, true);	
 
-		camHat.pev.movetype = MOVETYPE_FOLLOW;
-		@camHat.pev.aiment = cam.edict();
-		
-		camHat.pev.sequence = playerHat.pev.sequence;
-		camHat.pev.body = playerHat.pev.body;
-		camHat.pev.framerate = playerHat.pev.framerate;
-		camHat.pev.colormap = cam.pev.colormap;
-		
-		h_watch_hat = playerHat;
-		h_hat = camHat;
+			camHat.pev.movetype = MOVETYPE_FOLLOW;
+			@camHat.pev.aiment = cam.edict();
+			
+			camHat.pev.sequence = playerHats[i].pev.sequence;
+			camHat.pev.body = playerHats[i].pev.body;
+			camHat.pev.framerate = playerHats[i].pev.framerate;
+			camHat.pev.colormap = cam.pev.colormap;
+			
+			ghostHats.insertLast(GhostHat(camHat, playerHats[i]));
+		}
 	}
 	
 	void updateVisibility(array<PlayerWithState@> playersWithStates) {
@@ -235,7 +251,6 @@ class GhostCam
 		CBaseEntity@ cam = h_cam;
 		
 		currentPlayerModel = getPlayerModel();
-		g_EntityFuncs.Remove(h_hat);
 		g_EntityFuncs.SetModel(cam, g_use_player_models ? currentPlayerModel : g_camera_model);
 		createCameraHat();
 		
@@ -342,8 +357,11 @@ class GhostCam
 		}
 	
 		g_EntityFuncs.Remove(h_render_off);
-		g_EntityFuncs.Remove(h_hat);
 		g_EntityFuncs.Remove(h_cam);
+		
+		for (uint i = 0; i < ghostHats.size(); i++) {
+			g_EntityFuncs.Remove(ghostHats[i].hat);
+		}
 		
 		initialized = false;
 	}
@@ -359,18 +377,22 @@ class GhostCam
 		CBasePlayer@ plr = cast<CBasePlayer@>(h_plr.GetEntity());
 		CBaseMonster@ cam = cast<CBaseMonster@>(h_cam.GetEntity());
 		CBaseEntity@ thirdPersonTarget = h_render_off;
-		CBaseEntity@ hat = h_hat;
 		
-		if (hat !is null) {
-			if (!h_watch_hat.IsValid()) {
-				createCameraHat(); // update hat model or delete it
+		for (uint i = 0; i < ghostHats.size(); i++) {
+			CBaseEntity@ hat = ghostHats[i].hat;
+		
+			if (hat !is null) {
+				if (!ghostHats[i].watchHat.IsValid()) {
+					createCameraHat(); // update hat model or delete it
+				} else {
+					hat.pev.colormap = plr.pev.colormap;	
+				}
 			} else {
-				hat.pev.colormap = plr.pev.colormap;	
+				// could search for hat ent here but that might lag.
+				// it's needed to re-create the hat after doing "hat off" + "hat afro"
 			}
-		} else {
-			// could search for hat ent here but that might lag.
-			// it's needed to re-create the hat after doing "hat off" + "hat afro"
 		}
+		
 		
 		// detect if player is in roaming mode
 		CBaseEntity@ oberverTarget = plr.GetObserver().GetObserverTarget();
