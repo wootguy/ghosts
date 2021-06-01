@@ -37,6 +37,8 @@ class GhostCam
 	float collectTimeout = 0;
 	EHandle collectTarget;
 	
+	uint32 isVisible; // bitfield indicating which players can see this ghost
+	
 	GhostCam() {}
 	
 	GhostCam(CBasePlayer@ plr) {
@@ -53,8 +55,7 @@ class GhostCam
 		dictionary keys;
 		keys["origin"] = plr.pev.origin.ToString();
 		keys["model"] = currentPlayerModel;
-		keys["targetname"] = g_ent_prefix + ghostId;
-		keys["noise3"] = getPlayerUniqueId(plr); // set an id on the ent for internal use only
+		keys["targetname"] = g_ent_prefix + "cam_" + ghostId;
 		keys["rendermode"] = "1";
 		keys["renderamt"] = "" + g_renderamt;
 		keys["spawnflags"] = "1";
@@ -64,6 +65,7 @@ class GhostCam
 		ghostCam.pev.takedamage = 0;
 		ghostCam.pev.sequence = 0;
 		ghostCam.pev.angles = plr.pev.v_angle;
+		ghostCam.pev.iuser2 = plr.entindex(); // share owner with other plugins
 		h_cam = ghostCam;
 
 		isPlayerModel = string(ghostCam.pev.model) != g_camera_model;
@@ -101,6 +103,16 @@ class GhostCam
 		lastOrigin = plr.pev.origin;
 	}
 	
+	// true if this ghost should never be shown to this player
+	bool hiddenByOtherPlugin(CBasePlayer@ plr) {
+		CBaseEntity@ cam = h_cam;
+		if (cam !is null) {
+			return cam.pev.iuser3 & (1 << (plr.entindex() & 31)) != 0;
+		}
+		
+		return false;
+	}
+	
 	void toggleThirdperson() {
 		if (!isValid()) {
 			return;
@@ -111,7 +123,9 @@ class GhostCam
 		isThirdPerson = !isThirdPerson;
 		if (isThirdPerson) {
 			g_EngineFuncs.SetView( h_plr.GetEntity().edict(), h_render_off.GetEntity().edict() );
-			hideGhostCam.Use(plr, plr, USE_OFF);
+			if (!hiddenByOtherPlugin(plr)) {
+				hideGhostCam.Use(plr, plr, USE_OFF);
+			}
 			
 			if (showCameraHelp) {
 				PrintKeyBindingStringLong(plr, "Hold +DUCK to adjust camera");
@@ -231,7 +245,9 @@ class GhostCam
 				continue;
 
 			if (state.shouldSeeGhosts(statePlr)) {
-				hideGhostCam.Use(statePlr, statePlr, USE_OFF);
+				if (!hiddenByOtherPlugin(statePlr)) {
+					hideGhostCam.Use(statePlr, statePlr, USE_OFF);
+				}
 			} else {
 				hideGhostCam.Use(statePlr, statePlr, USE_ON);
 			}

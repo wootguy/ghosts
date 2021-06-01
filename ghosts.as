@@ -208,16 +208,19 @@ void ghostLoop() {
 	{
 		CBasePlayer@ plr = playersWithStates[i].plr;
 		PlayerState@ state = playersWithStates[i].state;
-
+		
 		state.cam.think();
 		
 		if (!state.shouldSeeGhosts(plr)) {
 			continue;
 		}
 		
+		CBaseEntity@ cam = state.cam.h_cam;
+		
 		// hide ghost if blocking view
 		bool isGhostVisible = true;
-		if (plr.IsAlive() && state.visbilityMode == MODE_HIDE_IF_BLOCKING && !g_force_visible) {
+		bool shouldShowIfNonBlocking = plr.IsAlive() && state.visbilityMode == MODE_HIDE_IF_BLOCKING;
+		if (shouldShowIfNonBlocking && !g_force_visible) {
 			for (uint k = 0; k < playersWithStates.length(); k++) {
 				if (k == i) {
 					continue;
@@ -225,16 +228,18 @@ void ghostLoop() {
 
 				PlayerState@ gstate = playersWithStates[k].state;
 				if (gstate.cam.isValid()) {
-					bool blockingView = isBlockingView(plr, gstate.cam.h_cam);
+					CBaseEntity@ gcam = gstate.cam.h_cam;
+					bool blockingView = isBlockingView(plr, gcam);
+					bool shouldRender = !blockingView && !gstate.cam.hiddenByOtherPlugin(plr);
+					
 					CBaseEntity@ renderOff = gstate.cam.h_render_off;
-					renderOff.Use(plr, plr, blockingView ? USE_ON : USE_OFF);
-					isGhostVisible = !blockingView;
+					renderOff.Use(plr, plr, shouldRender ? USE_OFF : USE_ON);
+					isGhostVisible = shouldRender;
 				}
 			}
 		}
 		
 		// show spectator info
-		CBaseEntity@ cam = state.cam.h_cam;
 		if (isGhostVisible) {
 			Math.MakeVectors( plr.pev.v_angle );
 			Vector lookDir = g_Engine.v_forward;
@@ -333,6 +338,57 @@ void ghostLoop() {
 		if (cam !is null) {
 			cam.pev.solid = SOLID_NOT;
 		}
+	}
+	
+	// update visibility info for other plugins
+	for (uint i = 0; i < playersWithStates.length(); i++)
+	{
+		PlayerState@ state = playersWithStates[i].state;
+		CBaseEntity@ cam = state.cam.h_cam;
+		
+		state.cam.isVisible = 0;
+		
+		if (!state.cam.h_cam.IsValid()) {
+			continue;
+		}
+		
+		if (state.cam.isThirdPerson) {
+			state.cam.isVisible |= (1 << (playersWithStates[i].plr.entindex() & 31));
+		}
+		
+		for (uint k = 0; k < playersWithStates.length(); k++) {
+			if (k == i) {
+				continue;
+			}
+
+			PlayerState@ otherState = playersWithStates[k].state;
+			CBasePlayer@ otherPlr = playersWithStates[k].plr;
+			
+			if (!otherState.shouldSeeGhosts(otherPlr)) {
+				continue;
+			}
+			
+			bool isVisible = g_force_visible;
+			if (otherState.visbilityMode == MODE_HIDE_IF_BLOCKING) {
+				if (!otherPlr.IsAlive() || !isBlockingView(otherPlr, cam)) {
+					isVisible = true;
+				}
+			}
+			else if (otherState.visbilityMode == MODE_HIDE_IF_ALIVE) {
+				if (!otherPlr.IsAlive()) {
+					isVisible = true;
+				}
+			}
+			else if (otherState.visbilityMode == MODE_SHOW) {
+				isVisible = true;
+			}
+			
+			if (isVisible) {
+				state.cam.isVisible |= (1 << (otherPlr.entindex() & 31));
+			}
+		}
+		
+		cam.pev.iuser4 = state.cam.isVisible;
 	}
 }
 
