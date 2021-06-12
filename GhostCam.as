@@ -56,6 +56,7 @@ class GhostCam
 		keys["origin"] = plr.pev.origin.ToString();
 		keys["model"] = currentPlayerModel;
 		keys["targetname"] = g_ent_prefix + "cam_" + ghostId;
+		keys["noise3"] = getPlayerUniqueId(plr); // for ghost collecting
 		keys["rendermode"] = "1";
 		keys["renderamt"] = "" + g_renderamt;
 		keys["spawnflags"] = "1";
