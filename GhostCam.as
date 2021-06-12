@@ -38,6 +38,7 @@ class GhostCam
 	EHandle collectTarget;
 	
 	uint32 isVisible; // bitfield indicating which players can see this ghost
+	uint32 lastOtherPluginVisible; // last value of the visibility bitfield set by other plguins
 	
 	GhostCam() {}
 	
@@ -123,7 +124,7 @@ class GhostCam
 		
 		isThirdPerson = !isThirdPerson;
 		if (isThirdPerson) {
-			g_EngineFuncs.SetView( h_plr.GetEntity().edict(), h_render_off.GetEntity().edict() );
+			g_EngineFuncs.SetView( plr.edict(), hideGhostCam.edict() );
 			if (!hiddenByOtherPlugin(plr)) {
 				hideGhostCam.Use(plr, plr, USE_OFF);
 			}
@@ -139,7 +140,7 @@ class GhostCam
 			hideGhostCam.pev.angles.x *= -1;
 			lastThirdPersonOrigin = plr.pev.origin;
 		} else {
-			g_EngineFuncs.SetView( h_plr.GetEntity().edict(), h_plr.GetEntity().edict() );
+			g_EngineFuncs.SetView( plr.edict(), plr.edict() );
 			hideGhostCam.Use(plr, plr, USE_ON);
 		}
 	}
@@ -584,5 +585,10 @@ class GhostCam
 			plr.pev.v_angle.x += Math.RandomLong(0, 10);
 			plr.pev.fixangle = FAM_FORCEVIEWANGLES;
 		}
+		
+		if (uint32(cam.pev.iuser3) != lastOtherPluginVisible) {
+			updateVisibility(getPlayersWithState());
+		}
+		lastOtherPluginVisible = cam.pev.iuser3;
 	}
 }
