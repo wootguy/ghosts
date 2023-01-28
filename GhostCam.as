@@ -1,3 +1,4 @@
+#include "monster_ghost"
 
 class GhostHat
 {
@@ -34,9 +35,6 @@ class GhostCam
 	string currentPlayerModel;
 	int freeRoamCount = 0; // use to detect if ghost is free roaming (since there's no method to check mode)
 	
-	float collectTimeout = 0;
-	EHandle collectTarget;
-	
 	uint32 isVisible; // bitfield indicating which players can see this ghost
 	uint32 lastOtherPluginVisible; // last value of the visibility bitfield set by other plguins
 	
@@ -61,7 +59,7 @@ class GhostCam
 		keys["rendermode"] = "1";
 		keys["renderamt"] = "" + g_renderamt;
 		keys["spawnflags"] = "1";
-		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("cycler", keys, true);
+		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("monster_ghost", keys, true);
 		ghostCam.pev.solid = SOLID_NOT;
 		ghostCam.pev.movetype = MOVETYPE_NOCLIP;
 		ghostCam.pev.takedamage = 0;
@@ -426,14 +424,6 @@ class GhostCam
 			} else {
 				freeRoamCount = 0;
 			}		
-		}
-		
-		if (collectTimeout > g_Engine.time ) {
-			CBasePlayer@ target = cast<CBasePlayer@>(collectTarget.GetEntity());
-			if (target !is null) {
-				plr.GetObserver().SetObserverTarget(target);
-				plr.GetObserver().SetMode(OBS_CHASE_FREE);
-			}
 		}
 		
 		Math.MakeVectors( plr.pev.v_angle );
