@@ -186,9 +186,17 @@ void ghostLoop() {
 			
 			CBaseEntity@ phit = g_Utility.FindEntityForward(plr, 4096);
 			
-			if (phit !is null && phit.IsMonster() && phit.IsAlive()) {
+			bool isViewingMonsterInfo = false;
+			if (phit !is null) {
+				bool seeGhostEnt = string(phit.pev.targetname).Find(g_ent_prefix) == 0;
+				bool seeMonster = phit.IsMonster() && !seeGhostEnt;
+				isViewingMonsterInfo = seeMonster && phit.IsAlive();
+			}
+			
+			if (isViewingMonsterInfo) {
 				state.viewingMonsterInfo = 10;
-			} else if (state.viewingMonsterInfo > 0) {
+			}
+			else if (state.viewingMonsterInfo > 0) {
 				state.viewingMonsterInfo -= 1;
 			}
 		}
@@ -203,6 +211,7 @@ void ghostLoop() {
 		if (cam !is null) {
 			cam.pev.solid = SOLID_BBOX;
 			g_EntityFuncs.SetSize(cam.pev, Vector(-16, -16, -16), Vector(16, 16, 16));
+			cam.pev.iuser2 = 0; // for some reason iuser2 disables monster info and tracing
 		}
 	}
 	
@@ -345,6 +354,7 @@ void ghostLoop() {
 		
 		if (cam !is null) {
 			cam.pev.solid = SOLID_NOT;
+			cam.pev.iuser2 = playersWithStates[i].plr.entindex();
 		}
 	}
 	
