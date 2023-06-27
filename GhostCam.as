@@ -1,5 +1,3 @@
-#include "monster_ghost"
-
 class GhostHat
 {
 	EHandle hat; // hat attached to the ghost entity

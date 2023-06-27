@@ -1,3 +1,16 @@
+void PluginInit()
+{
+	g_Module.ScriptInfo.SetAuthor( "w00tguy" );
+	g_Module.ScriptInfo.SetContactInfo( "https://github.com/wootguy/" );
+}
+
+void MapInit()
+{
+	// registering this custom entity in a separate plugin so that the other plugin can be reloaded without
+	// restarting the map. This entity has no special functions either so the class isn't needed by the other plugin
+	g_CustomEntityFuncs.RegisterCustomEntity( "monster_ghost", "monster_ghost" );
+}
+
 class monster_ghost : ScriptBaseMonsterEntity
 {	
 	bool KeyValue( const string& in szKey, const string& in szValue )
