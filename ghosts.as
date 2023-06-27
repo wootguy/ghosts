@@ -3,7 +3,6 @@
 // ghosts loops on its own
 // ghosts emotes not working right (speed ignored sometimes)
 
-
 #include "GhostCam"
 #include "util"
 
@@ -80,9 +79,13 @@ class PlayerWithState {
 	}
 }
 
+array<string> g_disabled_maps = {
+	"fallguys_s2",
+	"fallguys_s3" // for some reason crashing a lot on this map, but still can't reproduce
+};
+
 void PluginInit()
-{	
-	g_CustomEntityFuncs.RegisterCustomEntity( "monster_ghost", "monster_ghost" );
+{
 	g_Module.ScriptInfo.SetAuthor( "w00tguy" );
 	g_Module.ScriptInfo.SetContactInfo( "https://github.com/wootguy/ghosts" );
 	
@@ -117,8 +120,6 @@ void MapInit()
 		state.cam = GhostCam();
 		state.nextGhostCollect = 0;
 	}
-	
-	g_CustomEntityFuncs.RegisterCustomEntity( "monster_ghost", "monster_ghost" );
 }
 
 void MapActivate()
@@ -418,6 +419,10 @@ HookReturnCode PlayerEnteredObserver( CBasePlayer@ plr ) {
 		state.cam.remove();
 	}
 	
+	if (g_disabled_maps.find(g_Engine.mapname) != -1) {
+		return HOOK_CONTINUE;
+	}
+	
 	state.cam.init(plr);
 	
 	update_ghost_visibility();
@@ -499,6 +504,10 @@ void delete_orphaned_ghosts() {
 }
 
 void create_ghosts() {
+	if (g_disabled_maps.find(g_Engine.mapname) != -1) {
+		return;
+	}
+
 	array<PlayerWithState@> playersWithStates = getPlayersWithState();
 	for (uint i = 0; i < playersWithStates.length(); i++)
 	{
@@ -722,6 +731,11 @@ void doCommand(CBasePlayer@ plr, const CCommand@ args, bool inConsole) {
 			g_PlayerFuncs.SayText(plr, 'Say ".ghosts model <0,1>" to change ghost model mode.\n');
 			g_PlayerFuncs.SayText(plr, 'Type ".ghosts" in console for more info\n');
 		}
+		
+		if (g_disabled_maps.find(g_Engine.mapname) != -1) {
+			g_PlayerFuncs.SayText(plr, 'Ghosts are disabled on this map.\n');
+		}
+		
 	}
 }
 
