@@ -83,41 +83,6 @@ string getPlayerUniqueId(CBasePlayer@ plr)
 	return steamId;
 }
 
-// get player by name, partial name, or steamId
-CBasePlayer@ getPlayer(CBasePlayer@ caller, string name)
-{
-	name = name.ToLowercase();
-	int partialMatches = 0;
-	CBasePlayer@ partialMatch;
-	CBaseEntity@ ent = null;
-	do {
-		@ent = g_EntityFuncs.FindEntityByClassname(ent, "player");
-		if (ent !is null) {
-			CBasePlayer@ plr = cast<CBasePlayer@>(ent);
-			string plrName = string(plr.pev.netname).ToLowercase();
-			string plrId = getPlayerUniqueId(plr).ToLowercase();
-			if (plrName == name)
-				return plr;
-			else if (plrId == name)
-				return plr;
-			else if (plrName.Find(name) != uint(-1))
-			{
-				@partialMatch = plr;
-				partialMatches++;
-			}
-		}
-	} while (ent !is null);
-	
-	if (partialMatches == 1) {
-		return partialMatch;
-	} else if (partialMatches > 1) {
-		g_PlayerFuncs.SayText(caller, 'There are ' + partialMatches + ' players that have "' + name + '" in their name. Be more specific.');
-	} else {
-		g_PlayerFuncs.SayText(caller, 'There is no player named "' + name + '"');
-	}
-	
-	return null;
-}
 
 void populatePlayerStates()
 {	
@@ -143,38 +108,7 @@ float AngleDifference( float angle2, float angle1 ) {
     return diff < -180 ? diff + 360 : diff;
 }
 
-Vector VecBModelOrigin( entvars_t@ pevBModel )
-{
-	return pevBModel.absmin + ( pevBModel.size * 0.5 );
-}
 
-Vector UTIL_ClampVectorToBox( Vector input, Vector clampSize )
-{
-	Vector sourceVector = input;
-
-	if ( sourceVector.x > clampSize.x )
-		sourceVector.x -= clampSize.x;
-	else if ( sourceVector.x < -clampSize.x )
-		sourceVector.x += clampSize.x;
-	else
-		sourceVector.x = 0;
-
-	if ( sourceVector.y > clampSize.y )
-		sourceVector.y -= clampSize.y;
-	else if ( sourceVector.y < -clampSize.y )
-		sourceVector.y += clampSize.y;
-	else
-		sourceVector.y = 0;
-	
-	if ( sourceVector.z > clampSize.z )
-		sourceVector.z -= clampSize.z;
-	else if ( sourceVector.z < -clampSize.z )
-		sourceVector.z += clampSize.z;
-	else
-		sourceVector.z = 0;
-
-	return sourceVector.Normalize();
-}
 
 void te_smoke(Vector pos, string sprite="sprites/steam1.spr", 
 	int scale=10, int frameRate=15,
