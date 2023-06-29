@@ -1,15 +1,11 @@
 #include "main.h"
-#include "meta_init.h"
-#include "misc_utils.h"
-#include "meta_utils.h"
-#include "private_api.h"
+#include "mmlib.h"
+#include "ghost_utils.h"
 #include <set>
 #include <map>
-#include "Scheduler.h"
 #include <vector>
-#include "StartSound.h"
-#include "meta_helper.h"
-#include "temp_ents.h"
+
+using namespace std;
 
 // TODO:
 // friend/enemy HUD info

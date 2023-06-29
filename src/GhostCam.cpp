@@ -1,8 +1,7 @@
 #include "GhostCam.h"
-#include "misc_utils.h"
-#include "meta_helper.h"
-#include "StartSound.h"
-#include "temp_ents.h"
+#include "mmlib.h"
+#include "main.h"
+#include "ghost_utils.h"
 
 using namespace std;
 
