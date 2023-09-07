@@ -8,7 +8,7 @@ void MapInit()
 {
 	// registering this custom entity in a separate plugin so that the other plugin can be reloaded without
 	// restarting the map. This entity has no special functions either so the class isn't needed by the other plugin
-	g_CustomEntityFuncs.RegisterCustomEntity( "monster_ghost", "monster_ghost" );
+	g_CustomEntityFuncs.RegisterCustomEntity( "monster_ghost_plugin", "monster_ghost_plugin" );
 }
 
 class monster_ghost : ScriptBaseMonsterEntity

@@ -57,7 +57,7 @@ class GhostCam
 		keys["rendermode"] = "1";
 		keys["renderamt"] = "" + g_renderamt;
 		keys["spawnflags"] = "1";
-		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("monster_ghost", keys, true);
+		CBaseEntity@ ghostCam = g_EntityFuncs.CreateEntity("monster_ghost_plugin", keys, true);
 		ghostCam.pev.solid = SOLID_NOT;
 		ghostCam.pev.movetype = MOVETYPE_NOCLIP;
 		ghostCam.pev.takedamage = 0;
