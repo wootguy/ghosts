@@ -131,6 +131,9 @@ void GhostCam::toggleThirdperson() {
 		g_engfuncs.pfnSetView(plr->edict(), plr->edict());
 		Use(hideGhostCam->edict(), plr->edict(), plr->edict(), USE_ON);
 	}
+
+	// signal to TooManyPolys that the view is first person and the LD model shouldn't be rendered
+	h_cam.GetEdict()->v.iuser1 = !isThirdPerson ? 1 : 0;
 }
 
 void GhostCam::debug(CBasePlayer* plr) {
@@ -470,7 +473,7 @@ void GhostCam::think() {
 	lastPlayerAngles = plr->pev->v_angle;
 	lastPlayerOrigin = plr->pev->origin;
 
-	bool isPlayingEmote = string(STRING(cam->pev->noise1)) == "emote";
+	bool isPlayingEmote = cam->pev->iuser4 != 0;
 	Vector modelTargetPos = plr->pev->origin;
 	if (isPlayerModel && !isPlayingEmote) {
 		// center player model head at view origin (wont work for tall/short models)
@@ -502,7 +505,7 @@ void GhostCam::think() {
 		TRACE_LINE(modelTargetPos, idealPos, ignore_monsters, NULL, &tr);
 
 		if (tr.fInOpen != 0) {
-			g_engfuncs.pfnSetView(plr->edict(), thirdPersonTarget->edict());
+			//g_engfuncs.pfnSetView(plr->edict(), thirdPersonTarget->edict());
 
 			Vector targetAngles = plrAngles + thirdPersonRot;
 
@@ -514,7 +517,7 @@ void GhostCam::think() {
 			thirdPersonTarget->pev->avelocity = Vector(rot_x_diff * 10, rot_y_diff * 10, 0);
 		}
 		else {
-			g_engfuncs.pfnSetView(plr->edict(), plr->edict());
+			//g_engfuncs.pfnSetView(plr->edict(), plr->edict());
 		}
 
 		lastThirdPersonOrigin = thirdPersonTarget->pev->origin;

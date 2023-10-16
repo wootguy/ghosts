@@ -116,7 +116,7 @@ void MapActivate() {
 		// Reset player view mode to use server setting, unless mode was changed before the level changed
 		for (auto iter : g_player_states)
 		{
-			PlayerState& state = iter.second;
+			PlayerState& state = g_player_states[iter.first];
 			if (!state.changedMode) {
 				state.visbilityMode = cvar_default_mode->value;
 			}
@@ -133,9 +133,10 @@ void MapInit(edict_t* pEdictList, int edictCount, int maxClients) {
 	// reset camera states
 	for (auto iter : g_player_states)
 	{
-		PlayerState& state = iter.second;
+		PlayerState& state = g_player_states[iter.first];
 		state.cam = GhostCam();
 		state.nextGhostCollect = 0;
+		state.cam.nextThirdPersonToggle = 0;
 	}
 
 	g_Scheduler.RemoveTimer(map_activate_sched);
@@ -459,7 +460,7 @@ void ClientJoin(edict_t* plr) {
 }
 
 void ClientLeave(edict_t* plr) {
-	delete_orphaned_ghosts();
+	g_Scheduler.SetTimeout(delete_orphaned_ghosts, 0.0f);
 	oldObserverStates[ENTINDEX(plr)] = false;
 	RETURN_META(MRES_IGNORED);
 }
@@ -514,7 +515,7 @@ void delete_ghosts() {
 void delete_orphaned_ghosts() {
 	for (auto iter : g_player_states)
 	{
-		PlayerState& state = iter.second;
+		PlayerState& state = g_player_states[iter.first];
 		if (!state.cam.isValid()) {
 			state.cam.remove();
 		}
