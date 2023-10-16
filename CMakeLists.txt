@@ -14,7 +14,6 @@ set(SOURCE_FILES
 
 add_library(${PROJECT_NAME} SHARED)
 add_subdirectory(mmlib)
-target_sources(${PROJECT_NAME} PRIVATE ${SOURCE_FILES})
 
 if(MSVC)
 	source_group("Header Files\\sven" FILES ${SVEN_API_HEADERS})
