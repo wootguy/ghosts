@@ -28,4 +28,9 @@ as_command ghosts.default_mode 2
     "script" "ghosts/ghosts"
     "concommandns" "ghosts"
   }
+  "plugin"
+  {
+    "name" "GhostEntity"
+    "script" "ghosts/GhostEntity"
+  }
 ```
